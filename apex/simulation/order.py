@@ -48,11 +48,37 @@ class OrderBatch(BaseModel):
 
 
 if __name__ == "__main__":
-    o = Order(
-        id="demo",
-        items=[OrderItem(sku="x", shelf_zone_id="z1", quantity=2)],
+    # Smoke test: create sample orders and batch
+    
+    # Create individual order items
+    item1 = OrderItem(sku="SKU-001", shelf_zone_id="zone_a", quantity=2)
+    item2 = OrderItem(sku="SKU-002", shelf_zone_id="zone_b", quantity=1)
+    
+    # Create orders
+    order1 = Order(
+        id="ord-1",
+        items=[item1, item2],
         priority=1,
-        deadline=50.0,
+        deadline=100.0,
         status=OrderStatus.PENDING,
     )
-    print(repr(o))
+    
+    order2 = Order(
+        id="ord-2",
+        items=[OrderItem(sku="SKU-003", shelf_zone_id="zone_c", quantity=3)],
+        priority=2,
+        deadline=150.0,
+        status=OrderStatus.PENDING,
+    )
+    
+    # Create a batch
+    batch = OrderBatch(
+        orders=[order1, order2],
+        arrival_time=0.0,
+    )
+    
+    print("Order 1:", repr(order1))
+    print("Order 2:", repr(order2))
+    print("\nBatch:", repr(batch))
+    print(f"\nBatch contains {len(batch.orders)} orders")
+    print(f"Total items in batch: {sum(len(o.items) for o in batch.orders)}")
