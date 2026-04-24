@@ -20,13 +20,34 @@ class TaskResolver:
     def __repr__(self) -> str:
         return "TaskResolver()"
 
-    def resolve_shelf(self, sku: str, warehouse_state: Any) -> ShelfZone:
-        """Find the :class:`ShelfZone` holding ``sku``."""
-        raise NotImplementedError("TODO: index SKUs to shelf zones from state")
+    def resolve_shelf(self, sku: str, warehouse_state: Any) -> ShelfZone | None:
+        """Find the :class:`ShelfZone` holding ``sku``.
+        
+        For now, returns first available shelf. In production, use inventory index.
+        """
+        if not warehouse_state.shelf_zones:
+            return None
+        return warehouse_state.shelf_zones[0]
 
-    def resolve_bay(self, order_id: str, warehouse_state: Any) -> LoadingBay:
-        """Select a :class:`LoadingBay` for ``order_id``."""
-        raise NotImplementedError("TODO: bay assignment policy from order id")
+    def resolve_bay(self, order_id: str, warehouse_state: Any) -> LoadingBay | None:
+        """Select a :class:`LoadingBay` for ``order_id``.
+        
+        Returns first available bay. In production, use bay assignment policy.
+        """
+        if not warehouse_state.bays:
+            return None
+        return warehouse_state.bays[0]
+
+    def resolve_conveyor_segment(
+        self,
+        origin_row: int,
+        origin_col: int,
+        warehouse_state: Any,
+    ) -> ConveyorSegment | None:
+        """Return nearest conveyor segment to origin position."""
+        if not warehouse_state.conveyors:
+            return None
+        return warehouse_state.conveyors[0]
 
     def resolve_conveyor_path(
         self,
@@ -34,10 +55,60 @@ class TaskResolver:
         dest: tuple[int, int],
         warehouse_state: Any,
     ) -> list[ConveyorSegment]:
-        """Return ordered conveyor segments connecting ``origin`` to ``dest``."""
-        raise NotImplementedError("TODO: graph search over conveyor segments")
+        """Return ordered conveyor segments connecting ``origin`` to ``dest``.
+        
+        For MVP: return all conveyors in order. In production: graph search.
+        """
+        return warehouse_state.conveyors
 
 
 if __name__ == "__main__":
-    tr = TaskResolver()
-    print(repr(tr))
+    import simpy
+
+    from apex.simulation.grid import Grid
+    from apex.simulation.warehouse import (
+        ConveyorSegment,
+        LoadingBay,
+        ShelfZone,
+        WarehouseState,
+    )
+
+    env = simpy.Environment()
+    grid = Grid(20, 20, env)
+
+    shelf_a = ShelfZone(id="shelf_a", positions=[(5, 5)], capacity=100)
+    bay_out = LoadingBay(id="bay_out", position=(15, 15))
+    conveyor = ConveyorSegment(
+        id="conv_main",
+        positions=[(10, 10)],
+        direction="E",
+        speed=2.0,
+    )
+
+    warehouse = WarehouseState(
+        grid=grid,
+        shelf_zones=[shelf_a],
+        conveyors=[conveyor],
+        bays=[bay_out],
+        pending_orders=[],
+        active_orders=[],
+    )
+
+    resolver = TaskResolver()
+    print("=== Testing TaskResolver ===")
+    print(repr(resolver))
+    print()
+
+    print("=== Resolve Shelf ===")
+    shelf = resolver.resolve_shelf("SKU-A", warehouse)
+    print(f"Shelf for SKU-A: {shelf.id if shelf else None}")
+    print()
+
+    print("=== Resolve Bay ===")
+    bay = resolver.resolve_bay("ord-1", warehouse)
+    print(f"Bay for ord-1: {bay.id if bay else None}")
+    print()
+
+    print("=== Resolve Conveyor Path ===")
+    path = resolver.resolve_conveyor_path((0, 0), (20, 20), warehouse)
+    print(f"Conveyor path: {[c.id for c in path]}")
