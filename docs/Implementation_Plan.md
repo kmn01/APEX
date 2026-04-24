@@ -12,6 +12,7 @@
 * M4 — Domain Adapter (adapter/) Bridges abstract task specs ("pick item from zone C") to physical warehouse references (shelf ID, conveyor segment, bay slot).
 * M5 — Strategic Planner (planner/) HTN decomposition → MCTS task assignment → (eventually) MAPPO warm-start. Produces a TaskGraph that the adapter and executor consume.
 * M6 — Comms & Evaluation (comms/, evaluation/) Shared blackboard for Phase 1 agent coordination; metrics collection and experiment runner.
+* M7 — Visualization 
 
 
 ## Project structure

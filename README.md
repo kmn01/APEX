@@ -25,9 +25,13 @@
 ## Install
 
 ```bash
+# Clone & enter repo
+cd APEX
+# Create virtual environment
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+# Install with development + visualization
+pip install -e ".[dev,viz]"
 ```
 
 Optional groups: `viz` (pygame-ce), `gnn` (torch stack).
@@ -44,11 +48,43 @@ From the repo root (with the package on `PYTHONPATH`, or after `pip install -e .
 python -m apex.simulation.grid
 python -m apex.simulation.warehouse
 ```
+## Test Individual Modules
+
+```bash
+# M3: Tactical Executor
+python -m apex.tactical.executor
+
+# M3: Local Replanner
+python -m apex.tactical.replanner
+
+# M4: Domain Adapter
+python -m apex.adapter.translator
+
+# M5: Strategic Planner
+python -m apex.planner.htn.planner
+```
+## Run End-to-End Demo with Visualization
+
+```bash
+python examples/end_to_end_demo.py
+```
+
+This will:
+- Create a 20×20 warehouse grid
+- Plan 2 orders into 8 task nodes
+- Generate 6 concrete instructions
+- Display live visualization with 2 agents
+
+---
 
 ## Tests
 
 ```bash
 pytest
+
+or
+
+pytest tests/ -v
 ```
 
 (Add tests under `tests/` as behavior is implemented.)
