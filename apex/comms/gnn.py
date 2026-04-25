@@ -1,16 +1,12 @@
 """Graph neural network communication stub (Phase 3).
 
-Real implementations will exchange embeddings over a warehouse graph. All
-heavy tensor imports stay behind ``TYPE_CHECKING`` to keep optional ``torch``
-dependencies out of the default import path.
+Real implementations will exchange embeddings over a warehouse graph. Optional
+``torch``/PyG dependencies can be imported locally inside methods when implemented.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    import torch
+from typing import Any
 
 
 class GNNComm:

@@ -6,10 +6,7 @@ weights once torch training is enabled.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    import torch
+from typing import Any
 
 from apex.planner.marl.policy import MAPPOPolicy
 

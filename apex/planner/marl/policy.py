@@ -6,10 +6,7 @@ future learned policies coordinating with the strategic coordinator.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    import torch
+from typing import Any
 
 
 class MAPPOPolicy:

@@ -32,7 +32,7 @@ class AgentRegistry:
         """Remove an agent from the registry."""
         if agent_id not in self._agents:
             raise KeyError(f"Agent {agent_id} not found")
-        agent = self._agents.pop(agent_id)
+        self._agents.pop(agent_id)
         print(f"Unregistered agent: {agent_id}")
 
     def get_agent(self, agent_id: str) -> Agent:

@@ -207,7 +207,7 @@ if __name__ == "__main__":
 
         # Signal the picker to stop its main loop
         picker.should_stop = True
-        print(f"=== Final State ===")
+        print("=== Final State ===")
         print(f"Position: {picker.position}")
         print(f"Battery: {picker.battery_level:.1f}")
         print(f"Total distance traveled: {picker.total_distance_traveled}")

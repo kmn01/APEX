@@ -12,7 +12,7 @@ from collections.abc import Generator
 from typing import Any
 
 import simpy
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class TaskInstruction(BaseModel):

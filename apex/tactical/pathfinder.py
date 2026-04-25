@@ -7,7 +7,6 @@ table tracks occupied cells over time to prevent collisions.
 
 from __future__ import annotations
 
-from collections import deque
 from dataclasses import dataclass
 from typing import Any
 
@@ -166,12 +165,6 @@ class SimplePathfinder:
 
                 # Check reservation table
                 next_time = current_time + 1.0
-                if reservation_table and reservation_table.is_reserved(
-                    neighbor_pos, next_time
-                ):
-                    continue
-
-                # Also check if current agent is trying to occupy a reserved cell
                 if reservation_table and reservation_table.is_reserved(
                     neighbor_pos, next_time
                 ):

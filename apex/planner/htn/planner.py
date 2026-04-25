@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from apex.planner.htn.methods import BUILT_IN_METHODS, HTNMethod
+from apex.planner.htn.methods import BUILT_IN_METHODS
 from apex.planner.htn.operators import TaskType
 from apex.simulation.order import Order, OrderBatch
 
@@ -131,7 +131,6 @@ if __name__ == "__main__":
     from apex.simulation.grid import Grid
     from apex.simulation.order import Order, OrderBatch, OrderItem, OrderStatus
     from apex.simulation.warehouse import (
-        ConveyorSegment,
         LoadingBay,
         ShelfZone,
         WarehouseState,

@@ -145,14 +145,13 @@ if __name__ == "__main__":
     import simpy
 
     from apex.adapter.resolver import TaskResolver
-    from apex.simulation.grid import CellType, Grid
+    from apex.simulation.grid import Grid
     from apex.simulation.warehouse import (
         ConveyorSegment,
         LoadingBay,
         ShelfZone,
         WarehouseState,
     )
-    from apex.simulation.order import Order, OrderItem, OrderStatus
 
     env = simpy.Environment()
     grid = Grid(20, 20, env)
