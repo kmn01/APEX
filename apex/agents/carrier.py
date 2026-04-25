@@ -33,109 +33,64 @@ class CarrierBot(Agent):
             capabilities=capabilities,
             assigned_task=assigned_task,
         )
-        self.should_stop = False  # Signal to stop the run loop
         self.load_id = None  # Current load/tote being carried
 
-    def run(
+    def _execute_assigned_task(
         self,
         env: simpy.Environment,
         warehouse_state: Any,
     ) -> Generator[simpy.Event, None, None]:
-        """SimPy loop: load, follow path, unload at destination."""
-        while not self.should_stop:
-            # Check battery
-            if self.battery_level <= 0:
-                self.status = AgentStatus.FAILED
-                print(f"[{env.now:.1f}] {self.id} FAILED: out of battery")
-                break
-            
-            # If idle and no task, just wait
-            if self.status == AgentStatus.IDLE and not self.assigned_task:
-                yield env.timeout(1.0)
-                continue
-            
-            # If we have an assigned task, process it
-            if self.assigned_task:
-                print(f"[{env.now:.1f}] {self.id} starting transport task: {self.assigned_task}")
-                
-                # Simulate transport process
-                self.status = AgentStatus.WORKING
-                
-                # Load phase (1 time unit)
-                print(f"[{env.now:.1f}] {self.id} loading cargo...")
-                yield env.timeout(1.0)
-                self.consume_battery(1.0 * self.capabilities.battery_consumption_rate)
-                self.load_id = f"load-{env.now}"
-                self.current_payload = min(3, self.capabilities.max_payload)  # Typical load
-                print(f"[{env.now:.1f}] {self.id} loaded {self.current_payload} items (load_id: {self.load_id})")
-                
-                # Transport phase (simulate travel, 2 time units)
-                print(f"[{env.now:.1f}] {self.id} transporting to destination...")
-                yield env.timeout(2.0)
-                self.consume_battery(2.0 * self.capabilities.battery_consumption_rate)
-                
-                # Unload phase (1 time unit)
-                print(f"[{env.now:.1f}] {self.id} unloading cargo...")
-                yield env.timeout(1.0)
-                self.consume_battery(1.0 * self.capabilities.battery_consumption_rate)
-                items_unloaded = self.current_payload
-                self.current_payload = 0
-                self.load_id = None
-                self.total_work_done += items_unloaded
-                
-                print(f"[{env.now:.1f}] {self.id} completed transport. Unloaded {items_unloaded} items. Total work: {self.total_work_done}")
-                
-                # Task complete
-                self.assigned_task = None
-                self.status = AgentStatus.IDLE
-            else:
-                # Idle for a bit
-                yield env.timeout(0.5)
+        """Load, travel leg, and unload for the current transport assignment."""
+        assert self.assigned_task
+        print(f"[{env.now:.1f}] {self.id} starting transport task: {self.assigned_task}")
+        self.status = AgentStatus.WORKING
+
+        print(f"[{env.now:.1f}] {self.id} loading cargo...")
+        yield env.timeout(1.0)
+        self.consume_battery(1.0 * self.capabilities.battery_consumption_rate)
+        self.load_id = f"load-{env.now}"
+        self.current_payload = min(3, self.capabilities.max_payload)
+        print(
+            f"[{env.now:.1f}] {self.id} loaded {self.current_payload} items "
+            f"(load_id: {self.load_id})"
+        )
+
+        print(f"[{env.now:.1f}] {self.id} transporting to destination...")
+        yield env.timeout(2.0)
+        self.consume_battery(2.0 * self.capabilities.battery_consumption_rate)
+
+        print(f"[{env.now:.1f}] {self.id} unloading cargo...")
+        yield env.timeout(1.0)
+        self.consume_battery(1.0 * self.capabilities.battery_consumption_rate)
+        items_unloaded = self.current_payload
+        self.current_payload = 0
+        self.load_id = None
+        self.total_work_done += items_unloaded
+        print(
+            f"[{env.now:.1f}] {self.id} completed transport. Unloaded {items_unloaded} items. "
+            f"Total work: {self.total_work_done}"
+        )
+        self.assigned_task = None
+        self.status = AgentStatus.IDLE
 
     def can_perform(self, task_type: str) -> bool:
         """Carriers accept transport-heavy abstract tasks."""
         transport_tasks = ["TRANSPORT", "CARRY", "MOVE_LOAD", "DELIVER"]
         return task_type.upper() in transport_tasks
 
-    def _move_to(
-        self,
-        pos: tuple[int, int],
-        env: simpy.Environment,
-        warehouse_state: Any,
-    ) -> Generator[simpy.Event, None, None]:
-        """Move while honoring payload and dynamic obstacles."""
-        if not warehouse_state:
-            return
-        
-        # Calculate travel time based on distance and speed
-        # Payload affects speed (heavier loads = slower)
-        distance = self.manhattan_distance(pos)
-        
-        # Speed penalty for carrying load
-        effective_speed = self.capabilities.max_speed
+    def _effective_travel_speed(self) -> float:
+        """Heavier load reduces effective speed (up to 50% reduction)."""
+        if self.current_payload <= 0:
+            return self.capabilities.max_speed
+        payload_penalty = min(
+            0.5, self.current_payload / self.capabilities.max_payload * 0.5
+        )
+        return self.capabilities.max_speed * (1.0 - payload_penalty)
+
+    def _movement_log_suffix(self) -> str:
         if self.current_payload > 0:
-            # Reduce speed proportionally to payload (max 50% reduction)
-            payload_penalty = min(0.5, self.current_payload / self.capabilities.max_payload * 0.5)
-            effective_speed = self.capabilities.max_speed * (1.0 - payload_penalty)
-        
-        travel_time = distance / effective_speed
-        
-        # Update status
-        self.status = AgentStatus.MOVING
-        load_info = f" (carrying {self.current_payload} items)" if self.current_payload > 0 else ""
-        print(f"[{env.now:.1f}] {self.id} moving to {pos} (distance: {distance}, time: {travel_time:.1f}){load_info}")
-        
-        # Simulate movement with time delay
-        yield env.timeout(travel_time)
-        
-        # Update position and consume battery
-        self.position = pos
-        self.total_distance_traveled += distance
-        battery_consumed = travel_time * self.capabilities.battery_consumption_rate
-        self.consume_battery(battery_consumed)
-        
-        print(f"[{env.now:.1f}] {self.id} arrived at {pos}, battery: {self.battery_level:.1f}")
-        self.status = AgentStatus.IDLE
+            return f" (carrying {self.current_payload} items)"
+        return ""
 
 
 if __name__ == "__main__":
@@ -204,7 +159,6 @@ if __name__ == "__main__":
 
     def test_carrier():
         """Test carrier movement and transport operations."""
-        
         # Move to shelf
         print("[TEST] Moving to shelf...")
         yield env.process(carrier._move_to((2, 2), env, warehouse))

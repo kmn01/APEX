@@ -68,41 +68,31 @@ class AgentRegistry:
         """Return all failed agents (out of battery or error)."""
         return self.get_agents_by_status(AgentStatus.FAILED)
 
+    def _candidates_for_task(self, task_type: str) -> list[Agent]:
+        """Idle, non-failed agents that can perform ``task_type``, best first."""
+        candidates = [
+            a for a in self.get_available_agents()
+            if a.can_perform(task_type)
+        ]
+        candidates.sort(
+            key=lambda a: (-a.battery_level, a.total_distance_traveled)
+        )
+        return candidates
+
     def find_agent_for_task(self, task_type: str) -> Agent | None:
         """Find the best available agent for a task type.
         
         Returns the first idle agent that can perform the task.
         Prioritizes by: battery level (higher is better) -> distance traveled (lower is better).
         """
-        candidates = [
-            a for a in self.get_available_agents()
-            if a.can_perform(task_type)
-        ]
-        
-        if not candidates:
-            return None
-        
-        # Sort by battery (descending) then by distance traveled (ascending)
-        candidates.sort(
-            key=lambda a: (-a.battery_level, a.total_distance_traveled)
-        )
-        return candidates[0]
+        c = self._candidates_for_task(task_type)
+        return c[0] if c else None
 
     def find_agents_for_task(
         self, task_type: str, count: int = 1
     ) -> list[Agent]:
         """Find multiple available agents for a task type."""
-        candidates = [
-            a for a in self.get_available_agents()
-            if a.can_perform(task_type)
-        ]
-        
-        # Sort by battery (descending) then by distance traveled (ascending)
-        candidates.sort(
-            key=lambda a: (-a.battery_level, a.total_distance_traveled)
-        )
-        
-        return candidates[:count]
+        return self._candidates_for_task(task_type)[:count]
 
     def get_pickers(self) -> list[Agent]:
         """Shortcut: get all picker agents."""

@@ -8,10 +8,27 @@ strategic and tactical layers.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import TypeVar
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from apex.simulation.grid import Grid
 from apex.simulation.order import Order
+
+T = TypeVar("T")
+
+
+def _find_by_id(
+    items: list[T],
+    entity_id: str,
+    get_id: Callable[[T], str],
+    kind: str,
+) -> T:
+    for item in items:
+        if get_id(item) == entity_id:
+            return item
+    raise KeyError(f"{kind} {entity_id} not found")
 
 
 class ShelfZone(BaseModel):
@@ -70,24 +87,17 @@ class WarehouseState(BaseModel):
 
     def get_shelf(self, shelf_id: str) -> ShelfZone:
         """Return the shelf zone with ``shelf_id``, or raise KeyError."""
-        for z in self.shelf_zones:
-            if z.id == shelf_id:
-                return z
-        raise KeyError(f"Shelf {shelf_id} not found")
+        return _find_by_id(self.shelf_zones, shelf_id, lambda z: z.id, "Shelf")
 
     def get_bay(self, bay_id: str) -> LoadingBay:
         """Return the loading bay with ``bay_id``, or raise KeyError."""
-        for b in self.bays:
-            if b.id == bay_id:
-                return b
-        raise KeyError(f"Bay {bay_id} not found")
+        return _find_by_id(self.bays, bay_id, lambda b: b.id, "Bay")
 
     def get_conveyor(self, conveyor_id: str) -> ConveyorSegment:
         """Return the conveyor segment with ``conveyor_id``, or raise KeyError."""
-        for c in self.conveyors:
-            if c.id == conveyor_id:
-                return c
-        raise KeyError(f"Conveyor {conveyor_id} not found")
+        return _find_by_id(
+            self.conveyors, conveyor_id, lambda c: c.id, "Conveyor"
+        )
 
     def is_shelf_available(self, shelf_id: str) -> bool:
         """True if the shelf can accept more inventory."""

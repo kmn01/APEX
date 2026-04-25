@@ -16,14 +16,30 @@ from apex.simulation.warehouse import (
 )
 from apex.tactical.executor import TacticalExecutor
 from apex.agents.registry import AgentRegistry
+from apex.agents.base import Agent, AgentCapabilities, AgentStatus
 from apex.agents.picker import PickerBot
-from apex.agents.base import AgentCapabilities, AgentStatus
 
 try:
     from apex.visualization.viewer import WarehouseVisualizer
     VIZ_AVAILABLE = True
 except ImportError:
     VIZ_AVAILABLE = False
+
+
+def _simulate_work_step(
+    env: simpy.Environment,
+    agent: Agent,
+    duration: float,
+    *,
+    increment_work: bool = False,
+) -> Generator[simpy.Event, None, None]:
+    """Set WORKING, wait, consume battery, optionally bump work, return IDLE."""
+    agent.status = AgentStatus.WORKING
+    yield env.timeout(duration)
+    agent.consume_battery(duration * agent.capabilities.battery_consumption_rate)
+    if increment_work:
+        agent.total_work_done += 1
+    agent.status = AgentStatus.IDLE
 
 
 def _drive_executor_queue(
@@ -45,22 +61,11 @@ def _drive_executor_queue(
         if instr.action_type == "MOVE_TO" and instr.target_pos is not None:
             yield env.process(agent._move_to(instr.target_pos, env, warehouse))
         elif instr.action_type == "PICK":
-            agent.status = AgentStatus.WORKING
-            yield env.timeout(1.0)
-            agent.consume_battery(1.0 * agent.capabilities.battery_consumption_rate)
-            agent.total_work_done += 1
-            agent.status = AgentStatus.IDLE
+            yield from _simulate_work_step(env, agent, 1.0, increment_work=True)
         elif instr.action_type == "PLACE_ON_CONVEYOR":
-            agent.status = AgentStatus.WORKING
-            yield env.timeout(0.8)
-            agent.consume_battery(0.8 * agent.capabilities.battery_consumption_rate)
-            agent.status = AgentStatus.IDLE
+            yield from _simulate_work_step(env, agent, 0.8)
         elif instr.action_type == "DISPATCH":
-            agent.status = AgentStatus.WORKING
-            yield env.timeout(0.8)
-            agent.consume_battery(0.8 * agent.capabilities.battery_consumption_rate)
-            agent.total_work_done += 1
-            agent.status = AgentStatus.IDLE
+            yield from _simulate_work_step(env, agent, 0.8, increment_work=True)
         else:
             yield env.timeout(0.3)
 

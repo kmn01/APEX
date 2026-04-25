@@ -1,6 +1,6 @@
 # APEX
 
-**APEX** (Adaptive Planning EXecution) is a hierarchical multi-agent planning stack for grid-based warehouse logistics simulation. A strategic layer decomposes order batches into task structure; a domain adapter grounds abstract tasks in shelf, conveyor, and bay identifiers; a conflict-based tactical layer moves heterogeneous agents under disruptions; and SimPy advances discrete time.
+**APEX** (Adaptive Planning EXecution) is a hierarchical multi-agent planning system for a grid-based warehouse simulation. The strategic layer takes incoming order batches and breaks them into a structured set of tasks (what needs to happen, in what order). A domain adapter then turns those abstract tasks into concrete locations the simulation understands—shelves, conveyor segments, loading bays, and similar IDs—so “pick in zone C” becomes something the world can act on. The tactical layer plans routes and motion for different agent types (e.g. pickers, carriers, sorters) using conflict-aware methods so robots don’t get in each other’s way, and it can adjust locally when the floor changes or something goes wrong. SimPy drives the whole thing by stepping time forward in a discrete-event way so the warehouse and agents evolve together.
 
 ## Architecture
 
@@ -36,11 +36,8 @@ pip install -e ".[dev,viz]"
 
 Optional groups: `viz` (pygame-ce), `gnn` (torch stack).
 
-## Layout
 
-See `docs/Implementation_Plan.md` for the full module layout. Generated skeletons under `apex/` include module docstrings, typed stubs (`NotImplementedError` where behavior is pending), and a small `if __name__ == "__main__":` smoke block per file.
-
-## Smoke-check a module
+## Test a module
 
 From the repo root (with the package on `PYTHONPATH`, or after `pip install -e .`):
 

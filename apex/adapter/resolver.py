@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from apex.common.geometry import manhattan_distance
 from apex.simulation.warehouse import ConveyorSegment, LoadingBay, ShelfZone
 
 
@@ -21,18 +22,32 @@ class TaskResolver:
         return "TaskResolver()"
 
     def resolve_shelf(self, sku: str, warehouse_state: Any) -> ShelfZone | None:
-        """Find the :class:`ShelfZone` holding ``sku``.
-        
-        For now, returns first available shelf. In production, use inventory index.
+        """Find the :class:`ShelfZone` for ``sku``.
+
+        If a pending or active order line references ``sku`` with a
+        :attr:`~apex.simulation.order.OrderItem.shelf_zone_id`, that zone is
+        resolved via :meth:`~apex.simulation.warehouse.WarehouseState.get_shelf`.
+        Otherwise falls back to the first listed shelf (MVP policy).
         """
         if not warehouse_state.shelf_zones:
             return None
+        for order in (
+            *warehouse_state.pending_orders,
+            *warehouse_state.active_orders,
+        ):
+            for item in order.items:
+                if item.sku == sku:
+                    try:
+                        return warehouse_state.get_shelf(item.shelf_zone_id)
+                    except KeyError:
+                        continue
         return warehouse_state.shelf_zones[0]
 
     def resolve_bay(self, order_id: str, warehouse_state: Any) -> LoadingBay | None:
-        """Select a :class:`LoadingBay` for ``order_id``.
-        
-        Returns first available bay. In production, use bay assignment policy.
+        """Select a :class:`LoadingBay` for ``order_id`` (MVP: first bay).
+
+        Uses :meth:`~apex.simulation.warehouse.WarehouseState.get_order` when
+        extending this to per-order bay assignment.
         """
         if not warehouse_state.bays:
             return None
@@ -44,10 +59,17 @@ class TaskResolver:
         origin_col: int,
         warehouse_state: Any,
     ) -> ConveyorSegment | None:
-        """Return nearest conveyor segment to origin position."""
+        """Return the conveyor segment whose cells are closest to the origin."""
         if not warehouse_state.conveyors:
             return None
-        return warehouse_state.conveyors[0]
+        origin = (origin_row, origin_col)
+
+        def min_dist(seg: ConveyorSegment) -> int:
+            if not seg.positions:
+                return 10**9
+            return min(manhattan_distance(origin, p) for p in seg.positions)
+
+        return min(warehouse_state.conveyors, key=min_dist)
 
     def resolve_conveyor_path(
         self,
@@ -56,7 +78,7 @@ class TaskResolver:
         warehouse_state: Any,
     ) -> list[ConveyorSegment]:
         """Return ordered conveyor segments connecting ``origin`` to ``dest``.
-        
+
         For MVP: return all conveyors in order. In production: graph search.
         """
         return warehouse_state.conveyors

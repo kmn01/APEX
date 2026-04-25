@@ -12,6 +12,8 @@ from typing import Any
 
 import heapq
 
+from apex.common.geometry import manhattan_distance as manhattan_metric
+
 
 @dataclass(frozen=True)
 class Reservation:
@@ -104,10 +106,8 @@ class SimplePathfinder:
     def manhattan_distance(
         self, pos1: tuple[int, int], pos2: tuple[int, int]
     ) -> float:
-        """Heuristic: Manhattan distance."""
-        r1, c1 = pos1
-        r2, c2 = pos2
-        return abs(r1 - r2) + abs(c1 - c2)
+        """Heuristic: Manhattan distance (delegates to :func:`apex.common.geometry.manhattan_distance`)."""
+        return float(manhattan_metric(pos1, pos2))
 
     def find_path(
         self,
@@ -171,7 +171,7 @@ class SimplePathfinder:
                     continue
 
                 g_score = len(path)  # Cost = number of steps
-                h_score = self.manhattan_distance(neighbor_pos, goal)
+                h_score = float(manhattan_metric(neighbor_pos, goal))
                 f_score_new = g_score + h_score
 
                 new_state = (neighbor_pos, next_time)

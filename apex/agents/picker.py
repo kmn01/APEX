@@ -34,82 +34,30 @@ class PickerBot(Agent):
             capabilities=capabilities,
             assigned_task=assigned_task,
         )
-        self.should_stop = False  # Signal to stop the run loop
 
-    def run(
+    def _execute_assigned_task(
         self,
         env: simpy.Environment,
         warehouse_state: Any,
     ) -> Generator[simpy.Event, None, None]:
-        """SimPy loop: accept tasks, move, pick, signal completion."""
-        while not self.should_stop:
-            # Check battery
-            if self.battery_level <= 0:
-                self.status = AgentStatus.FAILED
-                print(f"[{env.now:.1f}] {self.id} FAILED: out of battery")
-                break
-            
-            # If idle and no task, just wait
-            if self.status == AgentStatus.IDLE and not self.assigned_task:
-                yield env.timeout(1.0)
-                continue
-            
-            # If we have an assigned task, process it
-            if self.assigned_task:
-                print(f"[{env.now:.1f}] {self.id} starting task: {self.assigned_task}")
-                
-                # Simulate picking process
-                # In a real scenario, this would parse the task and navigate
-                self.status = AgentStatus.WORKING
-                
-                # Simulate pick duration (2 time units)
-                yield env.timeout(2.0)
-                self.consume_battery(2.0 * self.capabilities.battery_consumption_rate)
-                
-                self.total_work_done += 1
-                print(f"[{env.now:.1f}] {self.id} completed pick. Work done: {self.total_work_done}")
-                
-                # Task complete
-                self.assigned_task = None
-                self.status = AgentStatus.IDLE
-            else:
-                # Idle for a bit
-                yield env.timeout(0.5)
+        """Simulate a pick for the current assignment."""
+        assert self.assigned_task
+        print(f"[{env.now:.1f}] {self.id} starting task: {self.assigned_task}")
+
+        self.status = AgentStatus.WORKING
+        yield env.timeout(2.0)
+        self.consume_battery(2.0 * self.capabilities.battery_consumption_rate)
+        self.total_work_done += 1
+        print(
+            f"[{env.now:.1f}] {self.id} completed pick. Work done: {self.total_work_done}"
+        )
+        self.assigned_task = None
+        self.status = AgentStatus.IDLE
 
     def can_perform(self, task_type: str) -> bool:
         """Pickers handle shelf-facing work types."""
         pick_tasks = ["PICK", "RETRIEVE", "SHELF_SCAN"]
         return task_type.upper() in pick_tasks
-
-    def _move_to(
-        self,
-        pos: tuple[int, int],
-        env: simpy.Environment,
-        warehouse_state: Any,
-    ) -> Generator[simpy.Event, None, None]:
-        """Navigate using grid walkability and reservations."""
-        if not warehouse_state:
-            return
-        
-        # Calculate travel time based on distance and speed
-        distance = self.manhattan_distance(pos)
-        travel_time = distance / self.capabilities.max_speed
-        
-        # Update status
-        self.status = AgentStatus.MOVING
-        print(f"[{env.now:.1f}] {self.id} moving to {pos} (distance: {distance}, time: {travel_time:.1f})")
-        
-        # Simulate movement with time delay
-        yield env.timeout(travel_time)
-        
-        # Update position and consume battery
-        self.position = pos
-        self.total_distance_traveled += distance
-        battery_consumed = travel_time * self.capabilities.battery_consumption_rate
-        self.consume_battery(battery_consumed)
-        
-        print(f"[{env.now:.1f}] {self.id} arrived at {pos}, battery: {self.battery_level:.1f}")
-        self.status = AgentStatus.IDLE
 
 
 if __name__ == "__main__":
