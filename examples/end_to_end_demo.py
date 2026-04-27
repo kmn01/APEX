@@ -6,7 +6,7 @@ import simpy
 
 from apex.adapter.translator import DomainTranslator, AbstractTask
 from apex.planner.htn.planner import HTNPlanner
-from apex.simulation.grid import Grid
+from apex.simulation.grid import CellType, Grid
 from apex.simulation.order import Order, OrderBatch, OrderItem, OrderStatus
 from apex.simulation.warehouse import (
     ConveyorSegment,
@@ -86,6 +86,16 @@ def main():
         direction="E",
         speed=2.0,
     )
+
+    # Stamp logical warehouse entities into grid cells for visualization/rendering.
+    for shelf in (shelf_a, shelf_b):
+        for pos in shelf.positions:
+            grid.set_cell(pos, CellType.SHELF)
+
+    for pos in conveyor.positions:
+        grid.set_cell(pos, CellType.CONVEYOR)
+
+    grid.set_cell(bay_out.position, CellType.BAY)
 
     warehouse = WarehouseState(
         grid=grid,
