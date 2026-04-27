@@ -79,6 +79,15 @@ def test_completed_tracking():
     assert executor.get_completed_count() == 1
 
 
+def test_task_instruction_supports_conveyor_id():
+    instr = TaskInstruction(
+        agent_id="carrier-1",
+        action_type="PLACE_ON_CONVEYOR",
+        conveyor_id="conv_main",
+    )
+    assert instr.conveyor_id == "conv_main"
+
+
 def test_repr_reports_active_agent_queues():
     """repr should describe live per-agent queue state."""
     env = simpy.Environment()

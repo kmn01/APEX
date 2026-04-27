@@ -22,6 +22,7 @@ class TaskInstruction(BaseModel):
     action_type: str
     target_pos: tuple[int, int] | None = None
     shelf_id: str | None = None
+    conveyor_id: str | None = None
     bay_id: str | None = None
     deadline: float = 0.0
 

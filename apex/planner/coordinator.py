@@ -12,6 +12,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 from apex.agents.registry import AgentRegistry
+from apex.planner.htn.planner import HTNPlanner
 from apex.planner.htn.planner import TaskGraph, TaskNode
 from apex.simulation.order import OrderBatch
 from apex.simulation.warehouse import WarehouseState
@@ -46,6 +47,7 @@ class StrategicCoordinator:
         self.mode = mode
         self.warehouse_state = warehouse_state
         self.agent_registry = agent_registry
+        self._htn_planner = HTNPlanner()
 
     def __repr__(self) -> str:
         return (
@@ -56,11 +58,25 @@ class StrategicCoordinator:
 
     def plan(self, order_batch: OrderBatch) -> TaskGraph:
         """Produce a fresh :class:`TaskGraph` for ``order_batch``."""
-        raise NotImplementedError("TODO: dispatch HTN/MCTS/MARL per mode")
+        if self.mode == PlanningMode.HTN_ONLY:
+            return self._htn_planner.plan_batch(order_batch, self.warehouse_state)
+
+        if self.mode == PlanningMode.MCTS_AUGMENTED:
+            raise NotImplementedError(
+                "MCTS_AUGMENTED mode is not implemented yet. Use HTN_ONLY for now."
+            )
+
+        if self.mode == PlanningMode.MARL_POLICY:
+            raise NotImplementedError(
+                "MARL_POLICY mode is not implemented yet. Use HTN_ONLY for now."
+            )
+
+        raise ValueError(f"Unsupported planning mode: {self.mode}")
 
     def replan(self, escalation: EscalationSignal) -> TaskGraphDelta:
         """Translate ``escalation`` into graph edits."""
-        raise NotImplementedError("TODO: diff graphs after disruption context")
+        _ = escalation  # TODO(M6): consume escalation context to produce precise diffs
+        return TaskGraphDelta()
 
 
 if __name__ == "__main__":

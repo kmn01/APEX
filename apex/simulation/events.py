@@ -73,7 +73,8 @@ class StochasticEventGenerator:
             if event_type == "agent_failure":
                 self._agent_failure_event()
             elif event_type == "shelf_block":
-                self._shelf_block_event()
+                # Shelf blocking has a recovery timeout, so it must run as a process.
+                self.env.process(self._shelf_block_event())
             elif event_type == "new_order":
                 self._new_order_injection_event()
             
@@ -89,7 +90,7 @@ class StochasticEventGenerator:
                 f"(no agents yet in M1)"
             )
 
-    def _shelf_block_event(self) -> None:
+    def _shelf_block_event(self) -> Generator[simpy.Event, None, None]:
         """Block shelf access or capacity for a period."""
         if not self.warehouse_state or not self.warehouse_state.shelf_zones:
             return

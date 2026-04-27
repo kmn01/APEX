@@ -66,6 +66,7 @@ def test_translate_transport_task(warehouse):
     instructions = translator.translate(task, warehouse, "carrier-1")
     assert len(instructions) >= 2
     assert any(i.action_type == "MOVE_TO" for i in instructions)
+    assert all(i.conveyor_id == "conv_main" for i in instructions)
 
 
 def test_translate_dispatch_task(warehouse):

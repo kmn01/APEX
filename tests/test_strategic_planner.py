@@ -3,6 +3,8 @@
 import pytest
 import simpy
 
+from apex.agents.registry import AgentRegistry
+from apex.planner.coordinator import PlanningMode, StrategicCoordinator
 from apex.planner.htn.planner import HTNPlanner, TaskGraph, TaskNode
 from apex.planner.htn.operators import TaskType
 from apex.simulation.grid import Grid
@@ -82,7 +84,7 @@ def test_plan_single_order(warehouse):
     
     graph = planner.plan_batch(batch, warehouse)
     assert len(graph.nodes) > 0
-    assert len(graph.edges) >= 0
+    assert len(graph.edges) == max(0, len(graph.nodes) - 1)
 
 
 def test_plan_multiple_orders(warehouse):
@@ -118,6 +120,52 @@ def test_task_graph_operations():
     assert len(graph.nodes) == 2
     assert len(graph.edges) == 1
     assert graph.get_node("node-1") is not None
+
+
+def test_coordinator_plan_htn_mode(warehouse):
+    """Coordinator should delegate planning in HTN_ONLY mode."""
+    coordinator = StrategicCoordinator(
+        mode=PlanningMode.HTN_ONLY,
+        warehouse_state=warehouse,
+        agent_registry=AgentRegistry(),
+    )
+    order = Order(
+        id="ord-1",
+        items=[OrderItem(sku="SKU-A", shelf_zone_id="shelf_a", quantity=1)],
+        priority=1,
+        deadline=100.0,
+        status=OrderStatus.PENDING,
+    )
+    graph = coordinator.plan(OrderBatch(orders=[order]))
+    assert len(graph.nodes) > 0
+
+
+def test_coordinator_plan_unsupported_modes_raise(warehouse):
+    """Non-HTN planning modes are explicit not implemented errors."""
+    order = Order(
+        id="ord-1",
+        items=[OrderItem(sku="SKU-A", shelf_zone_id="shelf_a", quantity=1)],
+        priority=1,
+        deadline=100.0,
+        status=OrderStatus.PENDING,
+    )
+    batch = OrderBatch(orders=[order])
+
+    mcts = StrategicCoordinator(
+        mode=PlanningMode.MCTS_AUGMENTED,
+        warehouse_state=warehouse,
+        agent_registry=AgentRegistry(),
+    )
+    with pytest.raises(NotImplementedError):
+        mcts.plan(batch)
+
+    marl = StrategicCoordinator(
+        mode=PlanningMode.MARL_POLICY,
+        warehouse_state=warehouse,
+        agent_registry=AgentRegistry(),
+    )
+    with pytest.raises(NotImplementedError):
+        marl.plan(batch)
 
 
 def test_task_node_ids_are_unique_by_default():
