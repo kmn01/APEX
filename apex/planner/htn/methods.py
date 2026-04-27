@@ -19,6 +19,7 @@ class HTNMethod(BaseModel):
     task: str
     subtask_types: list[TaskType] = Field(default_factory=list)
     applicability_check_fn: str = "always_true"
+    priority: int = 0
 
 
 BUILT_IN_METHODS: list[HTNMethod] = [
@@ -32,12 +33,14 @@ BUILT_IN_METHODS: list[HTNMethod] = [
             TaskType.DISPATCH,
         ],
         applicability_check_fn="order_items_available",
+        priority=0,
     ),
     HTNMethod(
         name="fulfill_order_direct_bay",
         task="fulfill_order",
         subtask_types=[TaskType.PICK, TaskType.TRANSPORT, TaskType.DISPATCH],
         applicability_check_fn="bay_adjacent_to_pick",
+        priority=10,
     ),
 ]
 

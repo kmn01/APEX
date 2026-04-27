@@ -28,6 +28,24 @@ def warehouse():
     )
 
 
+@pytest.fixture
+def warehouse_adjacent_bay():
+    """Create warehouse where shelf and bay are adjacent."""
+    env = simpy.Environment()
+    grid = Grid(20, 20, env)
+    shelf = ShelfZone(id="shelf_adj", positions=[(5, 5)], capacity=100)
+    bay = LoadingBay(id="bay_adj", position=(5, 6))
+
+    return WarehouseState(
+        grid=grid,
+        shelf_zones=[shelf],
+        conveyors=[],
+        bays=[bay],
+        pending_orders=[],
+        active_orders=[],
+    )
+
+
 def test_htn_planner_creation():
     """Test planner initialization."""
     planner = HTNPlanner()
@@ -100,6 +118,29 @@ def test_task_graph_operations():
     assert len(graph.nodes) == 2
     assert len(graph.edges) == 1
     assert graph.get_node("node-1") is not None
+
+
+def test_task_node_ids_are_unique_by_default():
+    """Auto-generated task IDs should be unique."""
+    ids = {TaskNode(task_type=TaskType.PICK).id for _ in range(200)}
+    assert len(ids) == 200
+
+
+def test_decompose_selects_direct_bay_method_when_applicable(warehouse_adjacent_bay):
+    """When bay is adjacent to pick shelf, direct-bay method should be chosen."""
+    planner = HTNPlanner()
+    order = Order(
+        id="ord-adj",
+        items=[OrderItem(sku="SKU-A", shelf_zone_id="shelf_adj", quantity=1)],
+        priority=1,
+        deadline=50.0,
+        status=OrderStatus.PENDING,
+    )
+
+    nodes = planner.decompose("fulfill_order", order, warehouse_adjacent_bay)
+    task_types = [n.task_type for n in nodes]
+    assert len(task_types) == 3
+    assert TaskType.STAGE not in task_types
 
 
 if __name__ == "__main__":

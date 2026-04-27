@@ -8,10 +8,12 @@ or tactical execution.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from apex.common.geometry import manhattan_distance
 from apex.planner.htn.methods import BUILT_IN_METHODS
 from apex.planner.htn.operators import TaskType
 from apex.simulation.order import Order, OrderBatch
@@ -20,7 +22,7 @@ from apex.simulation.order import Order, OrderBatch
 class TaskNode(BaseModel):
     """Vertex in the planner task graph."""
 
-    id: str = Field(default_factory=lambda: f"task_{id(object())}")
+    id: str = Field(default_factory=lambda: f"task_{uuid4().hex}")
     task_type: TaskType | str
     agent_id: str | None = None
     dependencies: list[str] = Field(default_factory=list)
@@ -53,9 +55,65 @@ class HTNPlanner:
     def __init__(self, max_depth: int = 32) -> None:
         self.max_depth = max_depth
         self._depth_counter = 0
+        self._applicability_checks: dict[str, Callable[[Order, Any], bool]] = {
+            "always_true": self._always_true,
+            "order_items_available": self._order_items_available,
+            "bay_adjacent_to_pick": self._bay_adjacent_to_pick,
+        }
 
     def __repr__(self) -> str:
         return f"HTNPlanner(max_depth={self.max_depth})"
+
+    def _always_true(self, order: Order, warehouse_state: Any) -> bool:
+        return True
+
+    def _order_items_available(self, order: Order, warehouse_state: Any) -> bool:
+        if not order.items:
+            return False
+        if warehouse_state is None or not hasattr(warehouse_state, "shelf_zones"):
+            return True
+        available_shelves = {shelf.id for shelf in warehouse_state.shelf_zones}
+        return all(item.shelf_zone_id in available_shelves for item in order.items)
+
+    def _bay_adjacent_to_pick(self, order: Order, warehouse_state: Any) -> bool:
+        if warehouse_state is None:
+            return False
+        if not getattr(warehouse_state, "bays", None):
+            return False
+        if not getattr(warehouse_state, "shelf_zones", None):
+            return False
+        if not order.items:
+            return False
+
+        shelf_positions_by_id = {
+            shelf.id: shelf.positions for shelf in warehouse_state.shelf_zones
+        }
+        for item in order.items:
+            positions = shelf_positions_by_id.get(item.shelf_zone_id, [])
+            for shelf_pos in positions:
+                if any(
+                    manhattan_distance(shelf_pos, bay.position) <= 1
+                    for bay in warehouse_state.bays
+                ):
+                    return True
+        return False
+
+    def _is_method_applicable(self, check_name: str, order: Order, warehouse_state: Any) -> bool:
+        check_fn = self._applicability_checks.get(check_name)
+        if check_fn is None:
+            return False
+        return check_fn(order, warehouse_state)
+
+    def _select_method(self, goal_task: str, order: Order, warehouse_state: Any) -> Any | None:
+        matching_methods = [m for m in BUILT_IN_METHODS if m.task == goal_task]
+        applicable_methods = [
+            method
+            for method in matching_methods
+            if self._is_method_applicable(method.applicability_check_fn, order, warehouse_state)
+        ]
+        if not applicable_methods:
+            return None
+        return max(applicable_methods, key=lambda m: (m.priority, m.name))
 
     def decompose(
         self,
@@ -73,22 +131,19 @@ class HTNPlanner:
 
         nodes: list[TaskNode] = []
 
-        # Find matching method for goal_task
-        for method in BUILT_IN_METHODS:
-            if method.task == goal_task:
-                # Create subtasks from method
-                prev_node_id = None
-                for i, subtask_type in enumerate(method.subtask_types):
-                    node = TaskNode(
-                        task_type=subtask_type,
-                        dependencies=[prev_node_id] if prev_node_id else [],
-                        deadline=order.deadline if order else 0.0,
-                        order_id=order.id if order else None,
-                    )
-                    nodes.append(node)
-                    prev_node_id = node.id
-
-                return nodes
+        method = self._select_method(goal_task, order, warehouse_state)
+        if method is not None:
+            prev_node_id = None
+            for subtask_type in method.subtask_types:
+                node = TaskNode(
+                    task_type=subtask_type,
+                    dependencies=[prev_node_id] if prev_node_id else [],
+                    deadline=order.deadline if order else 0.0,
+                    order_id=order.id if order else None,
+                )
+                nodes.append(node)
+                prev_node_id = node.id
+            return nodes
 
         # If no method matches, create primitive task
         node = TaskNode(

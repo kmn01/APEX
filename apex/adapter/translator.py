@@ -20,6 +20,7 @@ class AbstractTask(BaseModel):
 
     task_type: str
     item_sku: str | None = None
+    order_id: str | None = None
     zone_hint: str | None = None
     priority: int = 0
     deadline: float = 0.0
@@ -108,7 +109,7 @@ class DomainTranslator:
         
         elif task.task_type == "DISPATCH":
             # Move to bay, hand off
-            bay = self.resolver.resolve_bay("order-1", warehouse_state)
+            bay = self.resolver.resolve_bay(task.order_id or "order-1", warehouse_state)
             
             if bay:
                 instructions.append(

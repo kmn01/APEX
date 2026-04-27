@@ -44,14 +44,37 @@ class TaskResolver:
         return warehouse_state.shelf_zones[0]
 
     def resolve_bay(self, order_id: str, warehouse_state: Any) -> LoadingBay | None:
-        """Select a :class:`LoadingBay` for ``order_id`` (MVP: first bay).
-
-        Uses :meth:`~apex.simulation.warehouse.WarehouseState.get_order` when
-        extending this to per-order bay assignment.
-        """
+        """Select a :class:`LoadingBay` for ``order_id`` using deterministic heuristics."""
         if not warehouse_state.bays:
             return None
-        return warehouse_state.bays[0]
+
+        # Respect existing explicit assignment if the order is already queued at a bay.
+        for bay in warehouse_state.bays:
+            if order_id and order_id in bay.queue:
+                return bay
+
+        order = warehouse_state.get_order(order_id) if order_id else None
+        if order and order.items:
+            shelf_positions: list[tuple[int, int]] = []
+            for item in order.items:
+                try:
+                    shelf = warehouse_state.get_shelf(item.shelf_zone_id)
+                except KeyError:
+                    continue
+                shelf_positions.extend(shelf.positions)
+
+            if shelf_positions:
+                return min(
+                    warehouse_state.bays,
+                    key=lambda bay: (
+                        len(bay.queue),
+                        min(manhattan_distance(pos, bay.position) for pos in shelf_positions),
+                        bay.id,
+                    ),
+                )
+
+        # Fallback: shortest queue, then stable bay id.
+        return min(warehouse_state.bays, key=lambda bay: (len(bay.queue), bay.id))
 
     def resolve_conveyor_segment(
         self,
@@ -77,11 +100,27 @@ class TaskResolver:
         dest: tuple[int, int],
         warehouse_state: Any,
     ) -> list[ConveyorSegment]:
-        """Return ordered conveyor segments connecting ``origin`` to ``dest``.
+        """Return a deterministic conveyor path approximation from ``origin`` to ``dest``."""
+        if not warehouse_state.conveyors:
+            return []
 
-        For MVP: return all conveyors in order. In production: graph search.
-        """
-        return warehouse_state.conveyors
+        def distance_to_segment(point: tuple[int, int], seg: ConveyorSegment) -> int:
+            if not seg.positions:
+                return 10**9
+            return min(manhattan_distance(point, pos) for pos in seg.positions)
+
+        start_seg = min(
+            warehouse_state.conveyors,
+            key=lambda seg: (distance_to_segment(origin, seg), seg.id),
+        )
+        end_seg = min(
+            warehouse_state.conveyors,
+            key=lambda seg: (distance_to_segment(dest, seg), seg.id),
+        )
+
+        if start_seg.id == end_seg.id:
+            return [start_seg]
+        return [start_seg, end_seg]
 
 
 if __name__ == "__main__":

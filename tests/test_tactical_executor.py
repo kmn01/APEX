@@ -79,5 +79,20 @@ def test_completed_tracking():
     assert executor.get_completed_count() == 1
 
 
+def test_repr_reports_active_agent_queues():
+    """repr should describe live per-agent queue state."""
+    env = simpy.Environment()
+    executor = TacticalExecutor(env)
+
+    empty_repr = repr(executor)
+    assert "queued=0" in empty_repr
+    assert "active_agents=0" in empty_repr
+
+    executor.assign(TaskInstruction(agent_id="picker-1", action_type="MOVE_TO"))
+    queued_repr = repr(executor)
+    assert "queued=1" in queued_repr
+    assert "active_agents=1" in queued_repr
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

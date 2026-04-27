@@ -32,12 +32,17 @@ class TacticalExecutor:
     def __init__(self, env: simpy.Environment) -> None:
         self.env = env
         self._agent_actions: dict[str, str] = {}
-        self._instruction_queue: deque[TaskInstruction] = deque()
         self._agent_queues: dict[str, deque[TaskInstruction]] = defaultdict(deque)
         self._completed_instructions: list[TaskInstruction] = []
 
     def __repr__(self) -> str:
-        return f"TacticalExecutor(env={self.env!r}, queued={len(self._instruction_queue)})"
+        queued_total = sum(len(queue) for queue in self._agent_queues.values())
+        active_agents = sum(1 for queue in self._agent_queues.values() if queue)
+        return (
+            "TacticalExecutor("
+            f"env={self.env!r}, queued={queued_total}, active_agents={active_agents}"
+            ")"
+        )
 
     def assign(self, instruction: TaskInstruction) -> None:
         """Queue instruction for the named agent."""
