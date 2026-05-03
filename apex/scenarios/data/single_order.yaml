@@ -1,50 +1,43 @@
-# Example: full stack with CBS coordination (see also `apex/scenarios/data/single_order.yaml`)
-id: experiment_full_system_example
-seed: 0
-horizon: 5000
-grid_rows: 18
-grid_cols: 18
+id: single_order_yaml
+seed: 7
+horizon: 3000
+grid_rows: 16
+grid_cols: 16
 shelves:
   - id: shelf_a
-    positions: [[5, 5]]
+    positions: [[4, 4]]
     capacity: 100
   - id: shelf_b
-    positions: [[5, 12]]
+    positions: [[4, 10]]
     capacity: 100
 conveyor:
   id: conv_main
   positions:
-    - [10, 4]
-    - [10, 5]
-    - [10, 6]
-    - [10, 7]
-    - [10, 8]
-    - [10, 9]
-    - [10, 10]
-    - [10, 11]
-    - [10, 12]
-    - [10, 13]
+    - [8, 4]
+    - [8, 5]
+    - [8, 6]
+    - [8, 7]
+    - [8, 8]
+    - [8, 9]
+    - [8, 10]
+    - [8, 11]
   direction: E
   speed: 2.0
 bay_id: bay_out
-bay_position: [16, 10]
+bay_position: [14, 8]
 agents:
   - id: picker-0
     row: 0
-    col: 8
-  - id: picker-1
-    row: 1
-    col: 8
+    col: 0
 orders:
-  - id: ord-a
+  - id: ord-yaml-0
     arrival_time: 0
+    priority: 1
+    deadline: 9000
     items:
       - sku: SKU-A
         shelf_zone_id: shelf_a
         quantity: 1
-  - id: ord-b
-    arrival_time: 200
-    items:
       - sku: SKU-B
         shelf_zone_id: shelf_b
         quantity: 1

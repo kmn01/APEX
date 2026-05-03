@@ -165,6 +165,10 @@ class StrategicCoordinator:
 
         When MAP is enabled, pass ``current_graph`` (or call :meth:`plan` first so
         the coordinator retains :attr:`_last_task_graph`) for validated deltas.
+
+        When MAP is disabled, this returns an empty :class:`~apex.planner.graph_delta.TaskGraphDelta`.
+        Evaluation code should fall back with a fresh :meth:`plan` call on surviving orders
+        (see :mod:`apex.evaluation.episode_driver`).
         """
         baseline = current_graph or self._last_task_graph
         s = self._settings

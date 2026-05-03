@@ -70,6 +70,7 @@ class DomainTranslator:
                         action_type="MOVE_TO",
                         target_pos=target_pos,
                         shelf_id=shelf.id,
+                        order_id=task.order_id,
                     )
                 )
                 instructions.append(
@@ -78,6 +79,7 @@ class DomainTranslator:
                         action_type="PICK",
                         shelf_id=shelf.id,
                         deadline=task.deadline,
+                        order_id=task.order_id,
                     )
                 )
         
@@ -97,6 +99,7 @@ class DomainTranslator:
                         action_type="MOVE_TO",
                         target_pos=target_pos,
                         conveyor_id=conveyor.id,
+                        order_id=task.order_id,
                     )
                 )
                 instructions.append(
@@ -104,9 +107,40 @@ class DomainTranslator:
                         agent_id=agent_id,
                         action_type="PLACE_ON_CONVEYOR",
                         conveyor_id=conveyor.id,
+                        order_id=task.order_id,
                     )
                 )
         
+        elif task.task_type == "STAGE":
+            # Minimal staging stop at conveyor midpoint (tie-break for multi-cell conveyors).
+            conveyor = self.resolver.resolve_conveyor_segment(
+                warehouse_state.grid.rows // 2,
+                warehouse_state.grid.cols // 2,
+                warehouse_state,
+            )
+            if conveyor and conveyor.positions:
+                staging_pos = conveyor.positions[
+                    len(conveyor.positions) // 2 if len(conveyor.positions) > 1 else 0
+                ]
+                instructions.append(
+                    TaskInstruction(
+                        agent_id=agent_id,
+                        action_type="MOVE_TO",
+                        target_pos=staging_pos,
+                        conveyor_id=conveyor.id,
+                        order_id=task.order_id,
+                    )
+                )
+                instructions.append(
+                    TaskInstruction(
+                        agent_id=agent_id,
+                        action_type="STAGE_HOLD",
+                        conveyor_id=conveyor.id,
+                        deadline=task.deadline,
+                        order_id=task.order_id,
+                    )
+                )
+
         elif task.task_type == "DISPATCH":
             # Move to bay, hand off
             bay = self.resolver.resolve_bay(task.order_id or "order-1", warehouse_state)
@@ -118,6 +152,7 @@ class DomainTranslator:
                         action_type="MOVE_TO",
                         target_pos=bay.position,
                         bay_id=bay.id,
+                        order_id=task.order_id,
                     )
                 )
                 instructions.append(
@@ -126,6 +161,7 @@ class DomainTranslator:
                         action_type="DISPATCH",
                         bay_id=bay.id,
                         deadline=task.deadline,
+                        order_id=task.order_id,
                     )
                 )
         
@@ -136,6 +172,7 @@ class DomainTranslator:
                     agent_id=agent_id,
                     action_type=task.task_type,
                     deadline=task.deadline,
+                    order_id=task.order_id,
                 )
             )
         

@@ -1,0 +1,151 @@
+{
+  "apex_version": "0.0.0",
+  "python": "3.12.9",
+  "git_revision": "67d643fbd34c7f3c9b2ba948374b387f37e8a837",
+  "scenario_fingerprint": "d5fd6b669f67d1ec",
+  "scenario": {
+    "id": "two_agents_crossing",
+    "seed": 1,
+    "horizon": 5000.0,
+    "grid_rows": 14,
+    "grid_cols": 14,
+    "agents": [
+      {
+        "id": "picker-0",
+        "row": 0,
+        "col": 0
+      },
+      {
+        "id": "picker-1",
+        "row": 0,
+        "col": 13
+      }
+    ],
+    "shelves": [
+      {
+        "id": "shelf_a",
+        "positions": [
+          [
+            2,
+            10
+          ]
+        ],
+        "capacity": 100
+      },
+      {
+        "id": "shelf_b",
+        "positions": [
+          [
+            10,
+            2
+          ]
+        ],
+        "capacity": 100
+      }
+    ],
+    "conveyor": {
+      "id": "conv_main",
+      "positions": [
+        [
+          6,
+          4
+        ],
+        [
+          6,
+          5
+        ],
+        [
+          6,
+          6
+        ],
+        [
+          6,
+          7
+        ],
+        [
+          6,
+          8
+        ],
+        [
+          6,
+          9
+        ]
+      ],
+      "direction": "E",
+      "speed": 2.0
+    },
+    "bay_id": "bay_out",
+    "bay_position": [
+      12,
+      12
+    ],
+    "shelf_zone_ids": [
+      "shelf_a",
+      "shelf_b"
+    ],
+    "orders": [
+      {
+        "id": "ord-0",
+        "arrival_time": 0.0,
+        "priority": 1,
+        "deadline": 10000.0,
+        "items": [
+          {
+            "sku": "SKU-A",
+            "shelf_zone_id": "shelf_a",
+            "quantity": 1
+          }
+        ]
+      },
+      {
+        "id": "ord-1",
+        "arrival_time": 0.0,
+        "priority": 1,
+        "deadline": 10000.0,
+        "items": [
+          {
+            "sku": "SKU-B",
+            "shelf_zone_id": "shelf_b",
+            "quantity": 1
+          }
+        ]
+      }
+    ],
+    "disruptions": [],
+    "stochastic_disruption": null,
+    "run": {
+      "planning_mode": "HTN_ONLY",
+      "coordination": "greedy_uncoordinated",
+      "strategic_replan": "htn_fallback",
+      "disruption_stochastic_enabled": false,
+      "quiet": true
+    }
+  },
+  "extra": {
+    "cli": {
+      "scenario": "two_agents_crossing",
+      "yaml": null,
+      "output": "runs/greedy",
+      "coordination": "greedy_uncoordinated",
+      "planning_mode": null,
+      "no_replan": false,
+      "verbose": false
+    },
+    "metrics_summary": {
+      "task_completion_rate": 1.0,
+      "mean_time_to_completion": 41.6,
+      "agent_idle_fraction": 0.9916801663966681,
+      "collision_count": 0,
+      "executed_conflict_count": 1,
+      "planned_spacetime_conflict_count": 0,
+      "replan_count": 0,
+      "escalation_count": 0,
+      "orders_per_minute": 2.7210267340876624,
+      "disruption_count": 0,
+      "sim_duration": 44.101,
+      "horizon": 5000.0,
+      "scheduled_instruction_count": 16,
+      "completed_instruction_count": 16
+    }
+  }
+}

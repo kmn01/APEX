@@ -1,1 +1,28 @@
-# Placeholder experiment config
+# Run: python scripts/run_scenario.py --yaml experiments/baseline_cbs.yaml --output runs/baseline_cbs
+id: baseline_cbs_placeholder
+seed: 0
+horizon: 4000
+grid_rows: 14
+grid_cols: 14
+bay_position: [12, 12]
+shelves:
+  - id: shelf_a
+    positions: [[3, 6]]
+    capacity: 100
+agents:
+  - id: picker-0
+    row: 0
+    col: 0
+orders:
+  - id: o1
+    arrival_time: 0
+    items:
+      - sku: SKU-A
+        shelf_zone_id: shelf_a
+        quantity: 1
+disruptions: []
+run:
+  planning_mode: HTN_ONLY
+  coordination: cbs
+  strategic_replan: htn_fallback
+  quiet: true

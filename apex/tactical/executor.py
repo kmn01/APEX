@@ -23,6 +23,7 @@ class TaskInstruction(BaseModel):
     agent_id: str
     action_type: str
     target_pos: tuple[int, int] | None = None
+    order_id: str | None = None
     shelf_id: str | None = None
     conveyor_id: str | None = None
     bay_id: str | None = None
@@ -109,6 +110,13 @@ class TacticalExecutor:
                 expanded.append(instr.model_copy(update={"target_pos": waypoint}))
         return expanded
 
+    def peek_next_instruction(self, agent_id: str) -> TaskInstruction | None:
+        """Return next queued instruction without removing it (scheduler aid)."""
+        queue = self._agent_queues.get(agent_id)
+        if queue and len(queue) > 0:
+            return queue[0]
+        return None
+
     def get_next_instruction(self, agent_id: str) -> TaskInstruction | None:
         """Retrieve next instruction for an agent, or None if queue empty."""
         queue = self._agent_queues.get(agent_id, deque())
@@ -142,6 +150,10 @@ class TacticalExecutor:
     def get_completed_count(self) -> int:
         """Total instructions completed."""
         return len(self._completed_instructions)
+
+    def clear_all_queues(self) -> None:
+        """Remove all queued (not-yet-delivered) instructions; keeps completion history."""
+        self._agent_queues.clear()
 
 
 if __name__ == "__main__":

@@ -182,7 +182,21 @@ def main():
         print("-" * 40)
         print("Initializing visualizer (close window to exit)...")
 
-        viz = WarehouseVisualizer(warehouse, width=1000, height=800, cell_size=30)
+        viz = WarehouseVisualizer(
+            warehouse,
+            width=1000,
+            height=800,
+            cell_size=30,
+            scenario_hint={
+                "id": "end_to_end_demo",
+                "seed": 0,
+                "horizon": "ad-hoc",
+                "grid_rows": grid.rows,
+                "grid_cols": grid.cols,
+                "orders": len(orders),
+                "disruptions": 0,
+            },
+        )
 
         registry = AgentRegistry()
 

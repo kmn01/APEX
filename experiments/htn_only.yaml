@@ -1,1 +1,2 @@
-# Placeholder experiment config
+# Prefer the catalog entry (HTN-only assignment) via:
+#   python scripts/run_scenario.py --scenario single_order_single_agent --output runs/htn_only
