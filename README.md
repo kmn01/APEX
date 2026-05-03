@@ -39,7 +39,7 @@ Optional groups: `viz` (pygame-ce, imageio / ffmpeg for recording), `eval` (matp
 
 ### Runs dashboard (optional)
 
-Browse folders produced by `scripts/run_scenario.py --output …` (each run should contain `metrics.json`, `events.jsonl`, and `run_manifest.json`; optional `videos/*.mp4`).
+Browse folders produced by `scripts/run_scenario.py --output …` (each run should contain `metrics.json`, `events.jsonl`, and `run_manifest.json`; optional `videos/*.mp4`). Opening a run shows a structured **what was simulated** digest (grid, agents, orders, disruptions), **grouped metrics** with short definitions, a merged **timeline** of key events, and **consistency checks** against raw event counts. Raw scenario JSON and CLI flags stay under collapsible sections.
 
 ```bash
 pip install -e ".[dashboard]"

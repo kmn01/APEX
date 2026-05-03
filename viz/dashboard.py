@@ -57,6 +57,7 @@ def create_app(*, runs_root: Path) -> Any:
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.responses import FileResponse, HTMLResponse
 
+    from apex.evaluation.metrics import EpisodeMetrics
     from apex.evaluation.run_artifacts import (
         iter_run_dirs,
         list_mp4_videos,
@@ -64,6 +65,13 @@ def create_app(*, runs_root: Path) -> Any:
         load_run_manifest,
         safe_run_dir,
         summarize_events_jsonl,
+    )
+    from apex.evaluation.run_digest import (
+        build_scenario_digest,
+        build_timeline,
+        cap_raw_scenario_json,
+        consistency_hints,
+        metric_rows_by_group,
     )
 
     templates = _configure_templates()
@@ -105,21 +113,29 @@ def create_app(*, runs_root: Path) -> Any:
             except (OSError, json.JSONDecodeError):
                 manifest = None
 
-        snippet = _scenario_run_snippet(manifest or {})
+        m = manifest or {}
+        snippet = _scenario_run_snippet(m)
+        scen_dict = m.get("scenario") if isinstance(m.get("scenario"), dict) else None
+        scenario_digest = build_scenario_digest(scen_dict)
+        scenario_raw, scenario_raw_truncated = cap_raw_scenario_json(scen_dict)
+
         cli = None
         cli_json = ""
-        if manifest and isinstance(manifest.get("extra"), dict):
-            ex = manifest["extra"]
+        if isinstance(m.get("extra"), dict):
+            ex = m["extra"]
             if isinstance(ex.get("cli"), dict):
                 cli = ex["cli"]
                 cli_json = json.dumps(cli, indent=2)
 
-        metrics_dict: dict[str, Any] | None = None
+        metrics_obj: EpisodeMetrics | None = None
+        metric_groups: list[dict[str, Any]] | None = None
         if (run_dir / "metrics.json").is_file():
             try:
-                metrics_dict = load_metrics(run_dir).model_dump()
+                metrics_obj = load_metrics(run_dir)
+                metric_groups = metric_rows_by_group(metrics_obj)
             except Exception:
-                metrics_dict = None
+                metrics_obj = None
+                metric_groups = None
 
         event_summary = None
         tail_json = ""
@@ -131,6 +147,11 @@ def create_app(*, runs_root: Path) -> Any:
             except OSError:
                 event_summary = None
 
+        timeline = build_timeline(event_summary) if event_summary else []
+        consistency: list[str] = []
+        if metrics_obj is not None and event_summary is not None:
+            consistency = consistency_hints(metrics_obj, event_summary)
+
         videos = list_mp4_videos(run_dir)
 
         return templates.TemplateResponse(
@@ -140,12 +161,17 @@ def create_app(*, runs_root: Path) -> Any:
                 "runs_root": str(root),
                 "run_id": run_id,
                 "snippet": snippet,
+                "scenario_digest": scenario_digest,
+                "scenario_raw": scenario_raw,
+                "scenario_raw_truncated": scenario_raw_truncated,
                 "cli": cli,
                 "cli_json": cli_json,
-                "metrics": metrics_dict,
+                "metric_groups": metric_groups,
                 "event_summary": event_summary,
                 "tail_json": tail_json,
                 "has_events": has_events,
+                "timeline": timeline,
+                "consistency": consistency,
                 "videos": videos,
             },
         )

@@ -152,6 +152,7 @@ def summarize_events_jsonl(
     disruptions: list[dict[str, Any]] = []
     replans: list[dict[str, Any]] = []
     escalations: list[dict[str, Any]] = []
+    executed_conflicts: list[dict[str, Any]] = []
     lines_for_tail: list[str] = []
     line_no = 0
 
@@ -209,6 +210,15 @@ def summarize_events_jsonl(
                 replans.append({"time": data.get("time"), "reason": data.get("reason")})
             elif et == "escalation" and len(escalations) < narrative_cap:
                 escalations.append({"time": data.get("time"), "reason": data.get("reason")})
+            elif et == "executed_conflict" and len(executed_conflicts) < narrative_cap:
+                executed_conflicts.append(
+                    {
+                        "time": data.get("time"),
+                        "cell": data.get("cell"),
+                        "agent_a": data.get("agent_a"),
+                        "agent_b": data.get("agent_b"),
+                    }
+                )
 
     tail_parsed: list[dict[str, Any]] = []
     for ln in lines_for_tail:
@@ -226,6 +236,7 @@ def summarize_events_jsonl(
         "disruptions": disruptions,
         "strategic_replans": replans,
         "escalations": escalations,
+        "executed_conflicts": executed_conflicts,
         "tail_events": tail_parsed,
     }
 

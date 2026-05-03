@@ -114,3 +114,20 @@ def test_summarize_events_jsonl(tmp_path: Path) -> None:
     assert len(s["orders_completed"]) == 2
     assert len(s["tail_events"]) == 3
     assert s["tail_events"][-1]["type"] == "order_completed"
+
+
+def test_summarize_events_jsonl_executed_conflict(tmp_path: Path) -> None:
+    p = tmp_path / "ev2.jsonl"
+    lines = [
+        json.dumps(
+            {
+                "type": "executed_conflict",
+                "data": {"time": 4.0, "cell": [1, 2], "agent_a": "a", "agent_b": "b"},
+            }
+        ),
+    ]
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    s = summarize_events_jsonl(p)
+    assert s["counts"]["executed_conflict"] == 1
+    assert len(s["executed_conflicts"]) == 1
+    assert s["executed_conflicts"][0]["agent_a"] == "a"

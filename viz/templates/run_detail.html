@@ -4,50 +4,179 @@
 <p class="muted"><a href="/">← All runs</a></p>
 <h1>{{ run_id }}</h1>
 
+{% if snippet.scenario_id %}
+<p class="muted">Suite-style scenarios are documented in <code>docs/Scenario_Test_Suite.md</code> in the repo clone.</p>
+{% endif %}
+
 <div class="panel">
-  <h2>Scenario &amp; run config</h2>
+  <h2>How it was run</h2>
   <dl class="metrics">
     <dt>Scenario id</dt><dd>{{ snippet.scenario_id or "—" }}</dd>
     <dt>Seed</dt><dd>{{ snippet.seed if snippet.seed is not none else "—" }}</dd>
-    <dt>Horizon (s)</dt><dd>{{ snippet.horizon if snippet.horizon is not none else "—" }}</dd>
+    <dt>Horizon (cap)</dt><dd>{% if snippet.horizon is not none %}{{ snippet.horizon }}s{% else %}—{% endif %}</dd>
     <dt>Coordination</dt><dd>{{ snippet.coordination or "—" }}</dd>
     <dt>Planning mode</dt><dd>{{ snippet.planning_mode or "—" }}</dd>
     <dt>Strategic replan</dt><dd>{{ snippet.strategic_replan or "—" }}</dd>
   </dl>
+  {% if cli is not none %}
+  <details class="details-block">
+    <summary>CLI arguments (JSON)</summary>
+    <pre class="cli">{{ cli_json }}</pre>
+  </details>
+  {% endif %}
 </div>
 
-{% if cli is not none %}
+{% if scenario_digest %}
 <div class="panel">
-  <h2>CLI snapshot</h2>
-  <pre class="cli">{{ cli_json }}</pre>
+  <h2>What was simulated</h2>
+  {% if not scenario_digest.parsed %}
+  <p class="muted warn">Scenario did not fully validate against the current <code>ScenarioSpec</code>; showing a best-effort parse.</p>
+  {% endif %}
+  <h3 class="panel-sub">Layout</h3>
+  <ul class="compact tight">
+    <li>Grid: <strong>{{ scenario_digest.layout.grid }}</strong></li>
+    <li>Outbound bay: {{ scenario_digest.layout.bay }}</li>
+    {% if scenario_digest.layout.conveyor %}
+    <li>Conveyor: {{ scenario_digest.layout.conveyor }}</li>
+    {% else %}
+    <li>Conveyor: none</li>
+    {% endif %}
+  </ul>
+
+  <h3 class="panel-sub">Agents (start positions)</h3>
+  {% if scenario_digest.agents %}
+  <table>
+    <thead><tr><th>Id</th><th>Cell (row,col)</th></tr></thead>
+    <tbody>
+      {% for a in scenario_digest.agents %}
+      <tr><td><code>{{ a.id }}</code></td><td>{{ a.pos }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No agents listed.</p>
+  {% endif %}
+
+  <h3 class="panel-sub">Shelves</h3>
+  {% if scenario_digest.shelves %}
+  <table>
+    <thead><tr><th>Id</th><th>Cells</th><th>Capacity</th></tr></thead>
+    <tbody>
+      {% for s in scenario_digest.shelves %}
+      <tr><td><code>{{ s.id }}</code></td><td>{{ s.n_cells }}</td><td>{{ s.capacity }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No shelf entries.</p>
+  {% endif %}
+
+  <h3 class="panel-sub">Orders</h3>
+  {% if scenario_digest.orders %}
+  <table>
+    <thead>
+      <tr><th>Id</th><th>Arrival</th><th>Deadline</th><th>Priority</th><th>Lines</th><th>First SKU</th></tr>
+    </thead>
+    <tbody>
+      {% for o in scenario_digest.orders %}
+      <tr>
+        <td><code>{{ o.id }}</code></td>
+        <td>{{ o.arrival_time }}</td>
+        <td>{{ o.deadline }}</td>
+        <td>{{ o.priority }}</td>
+        <td>{{ o.n_lines }}</td>
+        <td>{{ o.first_sku }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No orders in spec.</p>
+  {% endif %}
+
+  <h3 class="panel-sub">Scripted disruptions</h3>
+  {% if scenario_digest.disruptions %}
+  <table>
+    <thead><tr><th>Time (s)</th><th>Kind</th><th>Payload (truncated)</th></tr></thead>
+    <tbody>
+      {% for d in scenario_digest.disruptions %}
+      <tr><td>{{ d.time }}</td><td><code>{{ d.kind }}</code></td><td class="muted payload-cell">{{ d.payload }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">None.</p>
+  {% endif %}
+
+  <h3 class="panel-sub">Stochastic disruption</h3>
+  <p class="muted">{% if scenario_digest.stochastic.enabled %}Enabled — {{ scenario_digest.stochastic.summary }}{% else %}Disabled.{% endif %}</p>
+</div>
+{% else %}
+<div class="panel"><p class="muted">No scenario object in manifest.</p></div>
+{% endif %}
+
+<details class="details-block panel-like">
+  <summary>Raw scenario JSON {% if scenario_raw_truncated %}<span class="muted">(truncated)</span>{% endif %}</summary>
+  <pre class="cli">{{ scenario_raw }}</pre>
+</details>
+
+{% if metric_groups %}
+<div class="panel">
+  <h2>Metrics</h2>
+  <p class="muted">Values are derived from <code>metrics.json</code> (episode aggregates). Hover labels for definitions.</p>
+  {% for section in metric_groups %}
+  <h3 class="panel-sub">{{ section.title }}</h3>
+  <table class="metric-table">
+    <tbody>
+      {% for row in section.rows %}
+      <tr>
+        <td><abbr title="{{ row.help }}">{{ row.label }}</abbr></td>
+        <td class="num">{{ row.value }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+</div>
+{% else %}
+<div class="panel"><p class="muted">No metrics.json or parse error.</p></div>
+{% endif %}
+
+{% if timeline %}
+<div class="panel">
+  <h2>Timeline</h2>
+  <p class="muted">Key events merged from the capped narrative slices (not exhaustive).</p>
+  <ul class="compact">
+    {% for ev in timeline %}
+    <li><span class="muted">{{ ev.time|round(2) }}s</span> · <code>{{ ev.kind }}</code> — {{ ev.summary }}</li>
+    {% endfor %}
+  </ul>
 </div>
 {% endif %}
 
-{% if metrics is not none %}
+{% if consistency %}
 <div class="panel">
-  <h2>Metrics</h2>
-  <dl class="metrics">
-    {% for k, v in metrics.items() %}
-    <dt>{{ k }}</dt><dd>{{ v }}</dd>
+  <h2>Checks</h2>
+  <ul class="compact">
+    {% for line in consistency %}
+    <li>{{ line }}</li>
     {% endfor %}
-  </dl>
+  </ul>
 </div>
-{% else %}
-<div class="panel"><p class="muted">No metrics.json in this directory.</p></div>
 {% endif %}
 
 {% if event_summary is not none %}
 <div class="panel">
-  <h2>Events</h2>
-  <p class="muted">{{ event_summary.line_count }} lines in events.jsonl · sim time {{ event_summary.time_min }} → {{ event_summary.time_max }}</p>
-  <h3 class="muted" style="margin-top:0.75rem;font-size:13px;">Counts by type</h3>
+  <h2>Event trace</h2>
+  <p class="muted">{{ event_summary.line_count }} lines · sim time {{ event_summary.time_min }} → {{ event_summary.time_max }}</p>
+  <h3 class="panel-sub">Counts by type</h3>
   <dl class="metrics">
     {% for t, c in event_summary.counts.items() %}
     <dt>{{ t }}</dt><dd>{{ c }}</dd>
     {% endfor %}
   </dl>
   {% if event_summary.orders_completed %}
-  <h3 class="muted" style="margin-top:0.75rem;font-size:13px;">Orders completed</h3>
+  <h3 class="panel-sub">Orders completed (first {{ event_summary.orders_completed|length }})</h3>
   <ul class="compact">
     {% for o in event_summary.orders_completed %}
     <li><code>{{ o.order_id }}</code> @ {{ o.time }}s</li>
@@ -55,7 +184,7 @@
   </ul>
   {% endif %}
   {% if event_summary.disruptions %}
-  <h3 class="muted" style="margin-top:0.75rem;font-size:13px;">Disruptions</h3>
+  <h3 class="panel-sub">Disruptions (first {{ event_summary.disruptions|length }})</h3>
   <ul class="compact">
     {% for d in event_summary.disruptions %}
     <li>{{ d.kind }} @ {{ d.time }}s</li>
@@ -63,7 +192,7 @@
   </ul>
   {% endif %}
   {% if event_summary.strategic_replans %}
-  <h3 class="muted" style="margin-top:0.75rem;font-size:13px;">Strategic replans</h3>
+  <h3 class="panel-sub">Strategic replans</h3>
   <ul class="compact">
     {% for x in event_summary.strategic_replans %}
     <li>{{ x.reason or "—" }} @ {{ x.time }}s</li>
@@ -71,15 +200,23 @@
   </ul>
   {% endif %}
   {% if event_summary.escalations %}
-  <h3 class="muted" style="margin-top:0.75rem;font-size:13px;">Escalations</h3>
+  <h3 class="panel-sub">Escalations</h3>
   <ul class="compact">
     {% for x in event_summary.escalations %}
     <li>{{ x.reason or "—" }} @ {{ x.time }}s</li>
     {% endfor %}
   </ul>
   {% endif %}
-  <h3 class="muted" style="margin-top:0.75rem;font-size:13px;">Tail (recent events)</h3>
-  <pre class="cli" style="max-height:14rem;">{{ tail_json }}</pre>
+  {% if event_summary.executed_conflicts %}
+  <h3 class="panel-sub">Executed conflicts (first {{ event_summary.executed_conflicts|length }})</h3>
+  <ul class="compact">
+    {% for x in event_summary.executed_conflicts %}
+    <li>{{ x.agent_a }} vs {{ x.agent_b }} @ {{ x.time }}s cell {{ x.cell }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <h3 class="panel-sub">Tail (recent events)</h3>
+  <pre class="cli tail-pre">{{ tail_json }}</pre>
 </div>
 {% elif not has_events %}
 <div class="panel"><p class="muted">No events.jsonl in this directory.</p></div>
