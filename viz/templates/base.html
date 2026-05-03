@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}APEX runs{% endblock %}</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    :root {
+      --bg: #f4f5f8;
+      --panel: #fff;
+      --text: #1a1d26;
+      --muted: #5c6370;
+      --border: #d8dce6;
+      --accent: #2d6cdf;
+      --accent-hover: #255bb5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      line-height: 1.45;
+      font-size: 15px;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; color: var(--accent-hover); }
+    nav {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 1.25rem;
+    }
+    main { max-width: 960px; margin: 0 auto; padding: 1.25rem; }
+    h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 1rem; }
+    h2 { font-size: 1.05rem; font-weight: 600; margin: 1.5rem 0 0.5rem; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.1rem;
+      margin-bottom: 1rem;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; font-size: 13px; }
+    tr:last-child td { border-bottom: none; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .chips span {
+      display: inline-block;
+      font-size: 12px;
+      padding: 0.12rem 0.45rem;
+      margin-right: 0.25rem;
+      border-radius: 4px;
+      background: #e8ecf4;
+      color: #3a4150;
+    }
+    pre.cli {
+      background: #1e222a;
+      color: #c8d0e0;
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 12px;
+      margin: 0;
+    }
+    dl.metrics { display: grid; grid-template-columns: 1fr auto; gap: 0.35rem 1.25rem; margin: 0; font-size: 14px; }
+    dl.metrics dt { color: var(--muted); }
+    dl.metrics dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+    video { max-width: 100%; border-radius: 6px; margin-top: 0.5rem; }
+    ul.compact { margin: 0.25rem 0 0 1.1rem; padding: 0; }
+    ul.compact li { margin: 0.2rem 0; }
+  </style>
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <nav><a href="/">APEX runs</a> <span class="muted">· {{ runs_root }}</span></nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

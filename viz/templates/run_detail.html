@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Run {{ run_id }}{% endblock %}
+{% block content %}
+<p class="muted"><a href="/">← All runs</a></p>
+<h1>{{ run_id }}</h1>
+
+<div class="panel">
+  <h2>Scenario &amp; run config</h2>
+  <dl class="metrics">
+    <dt>Scenario id</dt><dd>{{ snippet.scenario_id or "—" }}</dd>
+    <dt>Seed</dt><dd>{{ snippet.seed if snippet.seed is not none else "—" }}</dd>
+    <dt>Horizon (s)</dt><dd>{{ snippet.horizon if snippet.horizon is not none else "—" }}</dd>
+    <dt>Coordination</dt><dd>{{ snippet.coordination or "—" }}</dd>
+    <dt>Planning mode</dt><dd>{{ snippet.planning_mode or "—" }}</dd>
+    <dt>Strategic replan</dt><dd>{{ snippet.strategic_replan or "—" }}</dd>
+  </dl>
+</div>
+
+{% if cli is not none %}
+<div class="panel">
+  <h2>CLI snapshot</h2>
+  <pre class="cli">{{ cli_json }}</pre>
+</div>
+{% endif %}
+
+{% if metrics is not none %}
+<div class="panel">
+  <h2>Metrics</h2>
+  <dl class="metrics">
+    {% for k, v in metrics.items() %}
+    <dt>{{ k }}</dt><dd>{{ v }}</dd>
+    {% endfor %}
+  </dl>
+</div>
+{% else %}
+<div class="panel"><p class="muted">No metrics.json in this directory.</p></div>
+{% endif %}
+
+{% if event_summary is not none %}
+<div class="panel">
+  <h2>Events</h2>
+  <p class="muted">{{ event_summary.line_count }} lines in events.jsonl · sim time {{ event_summary.time_min }} → {{ event_summary.time_max }}</p>
+  <h3 class="muted" style="margin-top:0.75rem;font-size:13px;">Counts by type</h3>
+  <dl class="metrics">
+    {% for t, c in event_summary.counts.items() %}
+    <dt>{{ t }}</dt><dd>{{ c }}</dd>
+    {% endfor %}
+  </dl>
+  {% if event_summary.orders_completed %}
+  <h3 class="muted" style="margin-top:0.75rem;font-size:13px;">Orders completed</h3>
+  <ul class="compact">
+    {% for o in event_summary.orders_completed %}
+    <li><code>{{ o.order_id }}</code> @ {{ o.time }}s</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if event_summary.disruptions %}
+  <h3 class="muted" style="margin-top:0.75rem;font-size:13px;">Disruptions</h3>
+  <ul class="compact">
+    {% for d in event_summary.disruptions %}
+    <li>{{ d.kind }} @ {{ d.time }}s</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if event_summary.strategic_replans %}
+  <h3 class="muted" style="margin-top:0.75rem;font-size:13px;">Strategic replans</h3>
+  <ul class="compact">
+    {% for x in event_summary.strategic_replans %}
+    <li>{{ x.reason or "—" }} @ {{ x.time }}s</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if event_summary.escalations %}
+  <h3 class="muted" style="margin-top:0.75rem;font-size:13px;">Escalations</h3>
+  <ul class="compact">
+    {% for x in event_summary.escalations %}
+    <li>{{ x.reason or "—" }} @ {{ x.time }}s</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <h3 class="muted" style="margin-top:0.75rem;font-size:13px;">Tail (recent events)</h3>
+  <pre class="cli" style="max-height:14rem;">{{ tail_json }}</pre>
+</div>
+{% elif not has_events %}
+<div class="panel"><p class="muted">No events.jsonl in this directory.</p></div>
+{% else %}
+<div class="panel"><p class="muted">events.jsonl is present but could not be summarized.</p></div>
+{% endif %}
+
+<div class="panel">
+  <h2>Recording</h2>
+  {% if videos|length == 0 %}
+  <p class="muted">No MP4 files under <code>videos/</code>.</p>
+  {% elif videos|length == 1 %}
+  <p><a href="/media/{{ run_id | pathquote }}/{{ videos[0].name | pathquote }}">Download {{ videos[0].name }}</a></p>
+  <video controls src="/media/{{ run_id | pathquote }}/{{ videos[0].name | pathquote }}"></video>
+  {% else %}
+  <ul class="compact">
+    {% for v in videos %}
+    <li><a href="/media/{{ run_id | pathquote }}/{{ v.name | pathquote }}">{{ v.name }}</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endblock %}

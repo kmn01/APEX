@@ -1,0 +1,30 @@
+<table>
+  <thead>
+    <tr>
+      <th>Run</th>
+      <th>Scenario</th>
+      <th>Seed</th>
+      <th>Artifacts</th>
+      <th>Updated</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% if not runs %}
+    <tr><td colspan="5" class="muted">No subdirectories in runs root.</td></tr>
+    {% endif %}
+    {% for r in runs %}
+    <tr>
+      <td><a href="/runs/{{ r.run_id | pathquote }}">{{ r.run_id }}</a></td>
+      <td>{{ r.scenario_id or "—" }}</td>
+      <td>{{ r.seed if r.seed is not none else "—" }}</td>
+      <td class="chips">
+        {% if r.has_manifest %}<span>manifest</span>{% endif %}
+        {% if r.has_metrics %}<span>metrics</span>{% endif %}
+        {% if r.has_events %}<span>events</span>{% endif %}
+        {% if r.has_video %}<span>video</span>{% endif %}
+      </td>
+      <td class="muted">{{ r.mtime|fmt_ts }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

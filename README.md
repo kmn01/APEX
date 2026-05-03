@@ -35,7 +35,17 @@ source .venv/bin/activate
 pip install -e ".[dev,viz]"
 ```
 
-Optional groups: `viz` (pygame-ce, imageio / ffmpeg for recording), `eval` (matplotlib, PyYAML for analysis-style extras), `llm` (Gemini / MAP-style planner).
+Optional groups: `viz` (pygame-ce, imageio / ffmpeg for recording), `eval` (matplotlib, PyYAML for analysis-style extras), `llm` (Gemini / MAP-style planner), `dashboard` (FastAPI + uvicorn + Jinja for a local runs browser).
+
+### Runs dashboard (optional)
+
+Browse folders produced by `scripts/run_scenario.py --output …` (each run should contain `metrics.json`, `events.jsonl`, and `run_manifest.json`; optional `videos/*.mp4`).
+
+```bash
+pip install -e ".[dashboard]"
+python viz/dashboard.py --runs runs
+# Open http://127.0.0.1:8765/ — the run list refreshes every few seconds.
+```
 
 ### MAP-style Gemini planner (optional)
 

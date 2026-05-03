@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}APEX runs — index{% endblock %}
+{% block content %}
+<h1>Evaluation runs</h1>
+<p class="muted">Refreshes every 5s. Output directories are created by <code>scripts/run_scenario.py --output …</code>.</p>
+<div
+  id="runs-mount"
+  hx-get="/partials/runs"
+  hx-trigger="load, every 5s"
+  hx-swap="innerHTML"
+>
+  <p class="muted">Loading…</p>
+</div>
+{% endblock %}
