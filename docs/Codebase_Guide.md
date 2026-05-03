@@ -6,7 +6,7 @@ This is a map of the repository: what the system is, how major pieces relate, an
 
 ## Overview
 
-APEX (Adaptive Planning EXecution) is a Python research and education codebase for **hierarchical multi-agent planning** in a **grid-based warehouse** simulated with **SimPy** (discrete-event time). The “why” of the split across layers is to **separate** long-horizon *what to do* (strategic task graphs) from *where things are* in the world (domain binding) and from *how to move and react locally* (tactical instructions, path constraints, local disruption handling)—so teams can grow each concern independently and test it in isolation. The repository delivers working simulation types, a concrete **HTN-style** order-to-task decomposer, **UCT MCTS** for optional task-to-agent assignment refinement (`PlanningMode.MCTS_AUGMENTED`), a **domain adapter** that turns abstract tasks into `TaskInstruction` records, a **tactical executor** and **local replanner** with defined escalation types, and optional **pygame** visualization. Remaining narrative gaps are mostly **interfaces and stubs** (`StrategicCoordinator.replan`, full experiment runner); the map below says where those hooks live and what is actually implemented today.
+APEX (Adaptive Planning EXecution) is a Python research and education codebase for **hierarchical multi-agent planning** in a **grid-based warehouse** simulated with **SimPy** (discrete-event time). The “why” of the split across layers is to **separate** long-horizon *what to do* (strategic task graphs) from *where things are* in the world (domain binding) and from *how to move and react locally* (tactical instructions, path constraints, local disruption handling)—so teams can grow each concern independently and test it in isolation. The repository delivers working simulation types, a concrete **HTN-style** order-to-task decomposer, **UCT MCTS** for optional task-to-agent assignment refinement (`PlanningMode.MCTS_AUGMENTED`), a **domain adapter** that turns abstract tasks into `TaskInstruction` records, a **tactical executor** and **local replanner** with defined escalation types, **`ScenarioSpec` + `EpisodeDriver`** for repeatable evaluation episodes, and optional **pygame** visualization with **MP4** export. The map below says where those pieces live; `StrategicCoordinator.replan` integrates optional MAP/Gemini or HTN-style fallbacks as described in [MAP_Gemini_Rollout.md](MAP_Gemini_Rollout.md).
 
 ---
 
@@ -35,6 +35,11 @@ Data and control generally flow **from orders and layout** through **strategic d
 
 ```mermaid
 flowchart TB
+  subgraph scen["apex.scenarios"]
+    Spec["ScenarioSpec + catalog/YAML"]
+    Bld["build_warehouse_and_registry"]
+  end
+
   subgraph sim["apex.simulation"]
     Grid["Grid / CellType"]
     WS["WarehouseState"]
@@ -45,7 +50,7 @@ flowchart TB
   subgraph plan["apex.planner"]
     HTN["HTNPlanner → TaskGraph"]
     MCTS["MCTSSearch (UCT assignment)"]
-    Coord["StrategicCoordinator (partial)"]
+    Coord["StrategicCoordinator"]
   end
 
   subgraph adapt["apex.adapter"]
@@ -57,6 +62,11 @@ flowchart TB
     Ex["TacticalExecutor"]
     PF["CBSPlanner + constrained A*"]
     Rep["LocalReplanner"]
+  end
+
+  subgraph ev["apex.evaluation"]
+    Ep["EpisodeDriver"]
+    Run["ExperimentRunner"]
   end
 
   subgraph ag["apex.agents"]
@@ -78,10 +88,18 @@ flowchart TB
   Grid --> WS
   WS --> Bot
   Rep --> Coord
-  PF -.->|"not used in end_to_end_demo today"| Ex
+  Spec --> Bld
+  Bld --> WS
+  Ep --> Bld
+  Ep --> Coord
+  Ep --> Tr
+  Ep --> Ex
+  Run --> Ep
+  PF --> Ex
+  PF -.->|"optional in interactive demo"| Ex
 ```
 
-*Legend:* solid arrows = implemented paths in the primary demo or clear library calls; dotted = module exists and is testable, but the stock `examples/end_to_end_demo.py` does not import the pathfinder (the demo uses instruction-driven movement and optional waypoint polylines for the viewer).
+*Legend:* **`EpisodeDriver`** (when `RunConfig.coordination == CBS`) batches parallel **`MOVE_TO`** instructions and calls **`executor.assign_batch`** so **`CBSPlanner`** expands conflict-aware routes. The lighter **`examples/end_to_end_demo.py`** still drives a single **`PickerBot`** queue without that batching path; it may show greedy **Manhattan** waypoint polylines in the viewer rather than CBS-expanded paths.
 
 ---
 
@@ -161,13 +179,21 @@ flowchart TB
 
 ---
 
-### `apex.evaluation` — metrics and experiment harness
+### `apex.evaluation` — metrics, episode driver, sweep runner
 
-**What it is** `MetricsCollector` / `EpisodeMetrics` types and an `ExperimentRunner` shell.
+**What it is** `MetricsCollector`, `EpisodeMetrics`, **`RunConfig`** (**`TacticalCoordination`**, **`StrategicReplanMode`**, optional **`VideoRecordingConfig`**), **`EpisodeDriver`**, `ExperimentRunner`, and **`write_run_directory`** I/O helpers.
 
-**What it does** `ExperimentRunner.run_episode` and `run_sweep` are stubs; the module is the planned home for **repeatable** scenario studies once the stack is fully wired.
+**What it does** **`EpisodeDriver`** materializes **`ScenarioSpec`** via **`build_warehouse_and_registry`**, runs SimPy processes for order release, scripted disruptions, optional **`StochasticEventGenerator`**, and an orchestrator that replans when queues drain. Each dispatch builds a **`TaskGraph`** through **`StrategicCoordinator.plan`**, converts it to **`TaskInstruction`** streams (**`graph_to_instructions`**), records **spacetime conflict** counts from greedy preview paths, clears executor queues, then **`assign_instruction_stream`** (CBS batch vs single assign). Escalations invoke **`replan`** subject to **`StrategicReplanMode`**, applying validated **`TaskGraphDelta`** when non-empty, else **HTN fallback** on active orders. With **`run.video.enabled`**, a stepped pygame loop + **`VideoRecorder`** captures MP4. **`ExperimentRunner.run_episode`** / **`run_sweep`** wrap **`EpisodeDriver`**. Legacy **`ScenarioConfig`** can still scale **`ScenarioSpec`** via **`to_scale_scenario_spec`**.
 
-**Why it exists** Separates **paper-style evaluation** from the simulator so configs (`ScenarioConfig`) can grow without forking the warehouse model.
+**Why it exists** Separates **repeatable** episodic evaluation from the simulator and from ad-hoc demos; **`scripts/run_scenario.py`** consumes the same surface for CLI runs and artifacts.
+
+---
+
+### `apex.scenarios` — typed specs and builders
+
+**What it is** Pydantic **`ScenarioSpec`** (grid, agents, shelves, conveyor, bay, orders, disruptions, **`run: RunConfig`**), **`catalog`** factory functions, YAML load helpers, and **`build_warehouse_and_registry`**.
+
+**Why it exists** Gives **`EpisodeDriver`** and external YAML a **single** structured input for benchmarks without hardcoding layouts in evaluation code.
 
 ---
 
@@ -181,7 +207,7 @@ flowchart TB
 
 ### `apex.visualization`, `examples/`, `scripts/`, `viz/`, `config/`, `experiments/`
 
-**What it is** **Entry points and configuration** around the library. `WarehouseVisualizer` (under `apex/visualization/`) provides pygame rendering when `pygame-ce` is installed. `examples/end_to_end_demo.py` is the **canonical** “plan → translate → execute → (optional) visualize” script. `scripts/` currently contains `run_scenario.py` as a CLI-style stub. Root `config/*.yaml` and `experiments/*.yaml` support scenario and experiment naming even when not every key is read by a single driver yet. The top-level `viz/` package (renderer/dashboard) is separate from `apex.visualization`—check imports before extending.
+**What it is** **Entry points and configuration** around the library. `WarehouseVisualizer` (under `apex/visualization/`) provides pygame rendering when `pygame-ce` is installed; it accepts optional **`ScenarioSpec`** or **`scenario_hint`** mappings for HUD context. **`VideoRecorder`** (**imageio**/ffmpeg) appends **`frame_rgb()`** frames for MP4 output. `examples/end_to_end_demo.py` is the **canonical** introductory “plan → translate → execute → (optional) visualize” script (**`argparse`** flags: **`--record-video`**, **`--video-output`**, **`--video-fps`**). `scripts/run_scenario.py` runs **`EpisodeDriver`** from catalog **`--scenario`** or **`--yaml`**, merges CLI overrides into **`RunConfig`**, optional **`--record-video`**, and writes **`write_run_directory`** artifacts. Root `config/*.yaml` and `experiments/*.yaml` may still duplicate naming from **`apex/scenarios`**—confirm which driver reads a given file. The top-level `viz/` package (renderer/dashboard) is separate from `apex.visualization`—check imports before extending.
 
 **Why** Demos and YAML keep the **library** importable from tests and notebooks without a mandatory UI or training stack.
 
@@ -208,9 +234,16 @@ flowchart TB
 2. `HTNPlanner().plan_batch(...)` → `TaskGraph` (printed for inspection; demo then uses hand-built `AbstractTask` list to mirror a slice of work).
 3. `DomainTranslator().translate(...)` per `AbstractTask` → list of `TaskInstruction`.
 4. `TacticalExecutor(env).assign(...)` enqueues work; a custom SimPy process `_drive_executor_queue` pops instructions and calls `PickerBot` movement or work steps.
-5. If pygame is available, `WarehouseVisualizer` renders agents and **optional** waypoints; SimPy time advances in small `env.run` slices.
+5. If pygame is available, `WarehouseVisualizer` renders agents and **optional** waypoints from the instruction stream; SimPy time advances in small `env.run` slices. With **`--record-video`**, `VideoRecorder` writes an MP4.
 
-*This path exercises **HTN** + **adapter** + **executor** + **agents**; it does not call `SimplePathfinder`.*
+*This path exercises **HTN** + **adapter** + **executor** + **agents**; it does not use **`EpisodeDriver`** or executor **CBS** batching.*
+
+### Flow 1b — Catalog/YAML episode (`EpisodeDriver` / `scripts/run_scenario.py`)
+
+1. Load **`ScenarioSpec`** from **`apex.scenarios.catalog.build_scenario`** or **`load_scenario_from_yaml`**.
+2. **`EpisodeDriver(spec).run()`** builds the world, runs the orchestrator loop, activates orders, calls **`StrategicCoordinator.plan`**, **`graph_to_instructions`**, and **`assign_instruction_stream`** (CBS vs greedy per **`RunConfig.coordination`**).
+3. Optionally enable **`spec.run.video`** or CLI **`--record-video`** for pygame + MP4.
+4. **`write_run_directory(output, scenario, metrics, collector, …)`** persists manifests and telemetry.
 
 ### Flow 2 — Unit tests and module `__main__` blocks
 
@@ -225,11 +258,11 @@ flowchart TB
 2. `StrategicCoordinator(PlanningMode.MCTS_AUGMENTED, warehouse_state, registry).plan(OrderBatch)` → HTN **`plan_batch`** then **`_apply_mcts_assignments`**.
 3. **`assignment_state_from_graph`** builds the root `AssignmentState`; **`AssignmentDomain`** lists legal `(task_id, agent_id)` moves; **`MCTSSearch`** returns the best complete assignment seen; **`TaskNode.agent_id`** fields are patched on the graph.
 
-### Flow 4 — Intended escalation (partially implemented)
+### Flow 4 — Escalation in `EpisodeDriver`
 
-1. A runtime `Disruption` is passed to `LocalReplanner.handle`.
-2. If local patch succeeds → revised `TaskInstruction` list; if not → `EscalationSignal`.
-3. *Partial:* `StrategicCoordinator.replan(escalation, current_graph=...)` → `TaskGraphDelta` (validated MAP output when `APEX_MAP_*` / `GEMINI_API_KEY` configured; otherwise empty delta).
+1. A runtime `Disruption` is passed to `LocalReplanner.handle` from scripted disruptions (e.g. `agent_fail`) or tactical code paths as wired.
+2. If local patch succeeds → revised instructions; if not → `EscalationSignal`.
+3. `StrategicCoordinator.replan(escalation, current_graph=...)` → `TaskGraphDelta`; **`EpisodeDriver`** validates and merges when **`StrategicReplanMode`** permits, else (**HTN_FALLBACK**) re-plans active orders via **`plan`**. **`DISABLED`** only records escalation events.
 
 ---
 
@@ -245,15 +278,15 @@ flowchart TB
 | Adjust tactical queues or instruction schema | `apex/tactical/executor.py` |
 | Tighten multi-agent routing or swap algorithms | `apex/tactical/pathfinder.py` (and then wire it into whichever driver should call it) |
 | Extend assignment objective or strategic replanning | `apex/planner/mcts/domain.py` (costs, extra feasibility), `mcts/search.py` (`terminal_reward`), `coordinator.py` (`replan`, `TaskGraphDelta`) |
-| Add live metrics or experiment batches | `apex/evaluation/metrics.py`, then flesh out `ExperimentRunner` |
-| Optional pygame UI | `apex/visualization/viewer.py` and optional group `pip install -e ".[viz]"` |
+| Add live metrics, sweeps, or episode knobs | `apex/evaluation/metrics.py`, `run_config.py`, `episode_driver.py`, `runner.py`; wire YAML under `apex/scenarios/data/` |
+| Optional pygame UI / MP4 | `apex/visualization/viewer.py`, `recorder.py` and optional group `pip install -e ".[viz]"` |
 
 ---
 
 ## Out of scope / known limits
 
-- **`StrategicCoordinator.replan`** supports an optional **MAP/Gemini** path with validated `TaskGraphDelta` output; **ExperimentRunner** episode driver remains a stub. **`MCTSSearch.search`** and **`PlanningMode.MCTS_AUGMENTED`** are **implemented**. Narrative in `Project_Description.md` still describes several **targets** (e.g. full utility over proximity/load/congestion); this guide reflects the **code as checked in**.
-- Full CBS now lives in `apex.tactical.cbs` (`CBSPlanner`) while `apex.tactical.pathfinder` still provides reservation-table A* as a compatibility fallback.
+- **`StrategicCoordinator.replan`** supports an optional **MAP/Gemini** path with validated `TaskGraphDelta` output when enabled; **`EpisodeDriver`** applies non-empty deltas or falls back to full replans on active orders. **`MCTSSearch.search`** and **`PlanningMode.MCTS_AUGMENTED`** are **implemented**. Narrative in `Project_Description.md` may still describe **research targets** beyond static per-task assignment costs; this guide reflects the **code as checked in**.
+- Full CBS lives in `apex.tactical.cbs` (`CBSPlanner`) while `apex.tactical.pathfinder` still provides reservation-table A* as a compatibility fallback.
 - **HTN method selection** is priority- and applicability-based (`_select_method`): when multiple methods match the same task, the highest-priority applicable method is chosen (for example, direct-bay routing is selected when adjacency checks pass).
 - **`config/`** and **`experiments/`** files exist; not every key may be read by a single top-level script—**confirm** the driver you use before assuming a parameter is live.
 - **Tests** in `tests/` are a **subset** of what the Implementation Plan once listed; run `pytest` for current behavior.

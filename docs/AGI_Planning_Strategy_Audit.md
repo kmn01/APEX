@@ -85,14 +85,14 @@ Credible AGI claim after roadmap: APEX can execute strategic closed-loop plannin
 
 ### Evaluation and Reliability
 
-- [ ] Implement `MetricsCollector.compute_episode_metrics` in `apex/evaluation/metrics.py`
-- [ ] Implement `ExperimentRunner.run_episode` in `apex/evaluation/runner.py`
-- [ ] Implement `ExperimentRunner.run_sweep` in `apex/evaluation/runner.py`
+- [x] Implement `MetricsCollector.compute_episode_metrics` in `apex/evaluation/metrics.py`
+- [x] Implement `ExperimentRunner.run_episode` in `apex/evaluation/runner.py` (via `EpisodeDriver`)
+- [x] Implement `ExperimentRunner.run_sweep` in `apex/evaluation/runner.py`
 - [ ] Add repeatability/reliability benchmarks (success rate, pass^k, recovery latency) under `tests/` and/or `experiments/`
 
 ### CLI and Operational Entry Points
 
-- [ ] Implement scenario CLI in `scripts/run_scenario.py` (currently a placeholder)
+- [x] Implement scenario CLI in `scripts/run_scenario.py` (`EpisodeDriver`, catalog/YAML, artifact `write_run_directory`, optional `--record-video`)
 
 ### Tactical-System Integration Gaps
 

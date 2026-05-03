@@ -1,8 +1,8 @@
 {
   "apex_version": "0.0.0",
   "python": "3.12.9",
-  "git_revision": "67d643fbd34c7f3c9b2ba948374b387f37e8a837",
-  "scenario_fingerprint": "d5fd6b669f67d1ec",
+  "git_revision": "5f7b13675df1832f09750c326f1ccc2d4f4584c5",
+  "scenario_fingerprint": "08d0d0abacdd3d86",
   "scenario": {
     "id": "two_agents_crossing",
     "seed": 1,
@@ -118,7 +118,17 @@
       "coordination": "greedy_uncoordinated",
       "strategic_replan": "htn_fallback",
       "disruption_stochastic_enabled": false,
-      "quiet": true
+      "quiet": true,
+      "video": {
+        "enabled": false,
+        "output_dir": "artifacts/videos",
+        "fps": 20,
+        "frame_dt": 0.1,
+        "width": 1200,
+        "height": 900,
+        "cell_size": 30,
+        "include_paths": false
+      }
     }
   },
   "extra": {

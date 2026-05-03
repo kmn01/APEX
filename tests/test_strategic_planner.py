@@ -207,6 +207,7 @@ def test_map_plan_refine_success_increments_metrics(warehouse):
         gemini_api_key="fake",
         map_enabled=True,
         map_apply_plan=True,
+        map_plan_shadow=False,
     )
     fake = _FakeJsonClient()
     orch = MapOrchestrator(settings=settings, gemini_client=fake)
@@ -295,6 +296,7 @@ def test_map_replan_apply_returns_valid_delta(warehouse):
         map_enabled=True,
         map_apply_replan=True,
         map_replan_shadow=False,
+        map_plan_shadow=False,
     )
     fake = _FakeJsonClient()
     orch = MapOrchestrator(settings=settings, gemini_client=fake)

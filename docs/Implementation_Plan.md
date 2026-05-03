@@ -11,18 +11,19 @@
 - **M3 — Tactical Executor (`tactical/`)**: A* pathfinding with reservation-table conflict avoidance, tactical instruction execution, local replanning and escalation.
 - **M4 — Domain Adapter (`adapter/`)**: Abstract-task-to-concrete-resource translation.
 - **M5 — Strategic Planner (`planner/`)**: HTN decomposition and optional MCTS assignment (`PlanningMode.MCTS_AUGMENTED`), plus optional MAP/Gemini specialist pipeline for plan/replan with validation and fallback.
-- **M6 — Comms & Evaluation (`comms/`, `evaluation/`)**: Shared blackboard and reliability/evaluation harness (runner still partial).
-- **M7 — Visualization**: Optional rendering/dashboard surfaces.
+- **M6 — Comms & Evaluation (`comms/`, `evaluation/`, `scenarios/`)**: Shared blackboard; **`EpisodeDriver`** headless episodes; **`ExperimentRunner.run_episode` / `run_sweep`**; **`RunConfig`** ablations (**CBS vs greedy** coordination, **`StrategicReplanMode`**, video capture); **`scripts/run_scenario.py`** persists runs via **`apex/evaluation/io.py`** from catalog or YAML **`ScenarioSpec`** files.
+- **M7 — Visualization**: Optional **`WarehouseVisualizer`** (pygame-ce) plus **`VideoRecorder`** (imageio/ffmpeg) for MP4 from **`frame_rgb()`**.
 
 ## Current project structure (high-level)
 
 ```
-apex/
+APEX/
 ├── pyproject.toml
 ├── README.md
 ├── .env.example
 ├── apex/
 │   ├── simulation/
+│   ├── scenarios/
 │   ├── agents/
 │   ├── tactical/
 │   ├── adapter/
@@ -33,7 +34,8 @@ apex/
 │   │   ├── graph_delta.py
 │   │   └── coordinator.py
 │   ├── comms/
-│   └── evaluation/
+│   ├── evaluation/
+│   └── visualization/
 ├── config/
 ├── docs/
 ├── examples/

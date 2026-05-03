@@ -1,0 +1,77 @@
+id: single_order_single_agent
+seed: 42
+horizon: 3000.0
+grid_rows: 16
+grid_cols: 16
+agents:
+- id: picker-0
+  row: 0
+  col: 0
+shelves:
+- id: shelf_a
+  positions:
+  - - 4
+    - 4
+  capacity: 100
+- id: shelf_b
+  positions:
+  - - 4
+    - 10
+  capacity: 100
+conveyor:
+  id: conv_main
+  positions:
+  - - 8
+    - 4
+  - - 8
+    - 5
+  - - 8
+    - 6
+  - - 8
+    - 7
+  - - 8
+    - 8
+  - - 8
+    - 9
+  - - 8
+    - 10
+  - - 8
+    - 11
+  direction: E
+  speed: 2.0
+bay_id: bay_out
+bay_position:
+- 14
+- 8
+shelf_zone_ids:
+- shelf_a
+- shelf_b
+orders:
+- id: ord-0
+  arrival_time: 0.0
+  priority: 1
+  deadline: 10000.0
+  items:
+  - sku: SKU-A
+    shelf_zone_id: shelf_a
+    quantity: 1
+  - sku: SKU-B
+    shelf_zone_id: shelf_b
+    quantity: 1
+disruptions: []
+stochastic_disruption: null
+run:
+  planning_mode: HTN_ONLY
+  coordination: cbs
+  strategic_replan: htn_fallback
+  disruption_stochastic_enabled: false
+  quiet: true
+  video:
+    enabled: false
+    output_dir: artifacts/videos
+    fps: 20
+    frame_dt: 0.1
+    width: 1200
+    height: 900
+    cell_size: 30
+    include_paths: false

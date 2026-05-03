@@ -5,6 +5,9 @@ Example:
 
   python scripts/run_scenario.py --scenario two_agents_crossing --output runs/demo1
 
+  python scripts/run_scenario.py --scenario two_agents_crossing --output runs/demo \
+    --record-video
+
   python scripts/run_scenario.py --yaml apex/scenarios/data/single_order.yaml --output runs/demo2
 """
 
@@ -57,6 +60,24 @@ def main() -> None:
     )
     parser.add_argument("--no-replan", action="store_true", help="disable HTN strategic replan on escalation")
     parser.add_argument("--verbose", action="store_true", help="print agent trajectory logs")
+    parser.add_argument(
+        "--record-video",
+        action="store_true",
+        help="save pygame visualization to MP4 (requires pip install -e '.[viz]')",
+    )
+    parser.add_argument(
+        "--video-output-dir",
+        type=Path,
+        default=None,
+        help="MP4 directory; default: <output>/videos",
+    )
+    parser.add_argument("--video-fps", type=int, default=None, help="encoder FPS (default: run config)")
+    parser.add_argument(
+        "--video-frame-dt",
+        type=float,
+        default=None,
+        help="sim time slice per visualization frame (default: run config)",
+    )
     args = parser.parse_args()
 
     if bool(args.scenario) == bool(args.yaml):
@@ -74,6 +95,20 @@ def main() -> None:
         no_replan=args.no_replan,
         quiet=not args.verbose,
     )
+    if args.record_video:
+        video_dir = args.video_output_dir if args.video_output_dir is not None else args.output / "videos"
+        v_upd = {"enabled": True, "output_dir": str(video_dir.resolve())}
+        if args.video_fps is not None:
+            v_upd["fps"] = args.video_fps
+        if args.video_frame_dt is not None:
+            v_upd["frame_dt"] = args.video_frame_dt
+        spec = spec.model_copy(
+            update={
+                "run": spec.run.model_copy(
+                    update={"video": spec.run.video.model_copy(update=v_upd)},
+                ),
+            },
+        )
 
     collector = MetricsCollector()
     metrics = EpisodeDriver(spec, collector=collector).run()

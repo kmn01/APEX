@@ -70,8 +70,10 @@ Thumbs.db
 # Logs
 *.log
 
-# Optional: experiment / ML run artifacts (uncomment if you use these)
+# APEX scenario / eval outputs (manifests, metrics, JSONL traces, recordings)
+/runs/
+
+# ML experiment trackers (optional; uncomment if used)
 # wandb/
 # mlruns/
 # lightning_logs/
-# runs/

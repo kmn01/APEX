@@ -765,6 +765,11 @@ class WarehouseVisualizer:
         self.clock.tick(60 if not self.paused else 15)
         return self.running
 
+    def frame_rgb(self):
+        """Return current display buffer as an RGB array shaped (H, W, 3)."""
+        arr = pygame.surfarray.array3d(self.screen)
+        return arr.transpose(1, 0, 2)
+
     def close(self) -> None:
         """Clean up pygame."""
         pygame.quit()

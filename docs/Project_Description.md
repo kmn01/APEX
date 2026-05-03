@@ -21,16 +21,23 @@ The architecture is composed of five interacting components:
 - **Typed contracts:** strategic edits flow through `TaskGraphDelta` with validation (`validate_task_graph_delta`, `apply_task_graph_delta`).
 
 ## Scenario and Evaluation Status
-APEX currently provides script/test-driven scenarios and unit-level validation. A standardized episode/sweep benchmark harness remains planned under `apex/evaluation/runner.py`.
+APEX combines unit tests with a **typed episodic harness** built on **`ScenarioSpec`** (`apex/scenarios/models.py`): YAML or catalog-backed layouts, scripted order releases, deterministic seeds, horizon bounds, optional **`StochasticEventGenerator`** (when enabled on the **`RunConfig`**), and disruption scripts.
 
-Current reliability hooks include fallback counters and plan-run hashing support (`MapReliabilityMetrics`) for pass^k-style consistency tracking; full benchmark automation is still in progress.
+**`EpisodeDriver`** (`apex/evaluation/episode_driver.py`) runs one episode headlessly through **`StrategicCoordinator`** ( **`PlanningMode.HTN_ONLY`** or **`MCTS_AUGMENTED`** ), **`DomainTranslator`**, graph-to-instruction materialization (**`apex/evaluation/graph_flow.py`** ), and **`TacticalExecutor`** with optional **`CBSPlanner`** injection. Per-episode knobs live on **`RunConfig`** (`apex/evaluation/run_config.py`): **`TacticalCoordination`** (**CBS batch expansion** vs **greedy uncoordinated** **`MOVE_TO`**), **`StrategicReplanMode`** (escalations may trigger **`replan`** + delta apply or **`HTN` fallback**, or escalation may be logged only when disabled), **`quiet`** logging, stochastic disruption toggle, and optional **`VideoRecordingConfig`** (**pygame** step loop + **`VideoRecorder`** / **imageio** MP4).
+
+**`ExperimentRunner`** (`apex/evaluation/runner.py`) implements **`run_episode`** and **`run_sweep`** by delegating to **`EpisodeDriver`**. **`scripts/run_scenario.py`** persists runs (**`apex/evaluation/io.py`**: JSON/JSONL artifacts) from catalog ids or **`--yaml`** paths; **`examples/end_to_end_demo.py`** remains the lighter HTN→adapter→executor walkthrough with optional **`--record-video`**.
+
+Current reliability hooks include fallback counters and plan-run hashing support (`MapReliabilityMetrics`) for pass^k-style consistency tracking; sweep automation beyond sequential **`run_sweep`** is optional future work.
 
 ## Implementation Snapshot
 - Strategic: `apex/planner/htn/`, `apex/planner/mcts/`, `apex/planner/coordinator.py`, `apex/planner/specialists/`
 - Adapter: `apex/adapter/`
 - Tactical: `apex/tactical/`
 - Simulation: `apex/simulation/`
-- Evaluation: `apex/evaluation/` (partially implemented runner)
+- Scenarios: `apex/scenarios/` (specs, `catalog`, `builder`, sample YAML)
+- Evaluation: `apex/evaluation/` (`EpisodeDriver`, `ExperimentRunner`, `run_config`, `metrics`, `io`)
+- Visualization: `apex/visualization/viewer.py`, `apex/visualization/recorder.py` (optional MP4)
+- CLI: `scripts/run_scenario.py`
 
 ## Keywords
 hierarchical planning, HTN, MCTS, MAP-style orchestration, Gemini integration, task-graph validation, tactical replanning, multi-agent warehouse simulation

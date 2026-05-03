@@ -1,0 +1,97 @@
+id: order_batch_queue
+seed: 2
+horizon: 8000.0
+grid_rows: 18
+grid_cols: 18
+agents:
+- id: picker-0
+  row: 0
+  col: 8
+- id: picker-1
+  row: 2
+  col: 8
+shelves:
+- id: shelf_a
+  positions:
+  - - 5
+    - 5
+  capacity: 100
+- id: shelf_b
+  positions:
+  - - 5
+    - 12
+  capacity: 100
+conveyor:
+  id: conv_main
+  positions:
+  - - 10
+    - 4
+  - - 10
+    - 5
+  - - 10
+    - 6
+  - - 10
+    - 7
+  - - 10
+    - 8
+  - - 10
+    - 9
+  - - 10
+    - 10
+  - - 10
+    - 11
+  - - 10
+    - 12
+  - - 10
+    - 13
+  direction: E
+  speed: 2.0
+bay_id: bay_out
+bay_position:
+- 15
+- 9
+shelf_zone_ids:
+- shelf_a
+- shelf_b
+orders:
+- id: ord-wave-1
+  arrival_time: 0.0
+  priority: 1
+  deadline: 10000.0
+  items:
+  - sku: SKU-A
+    shelf_zone_id: shelf_a
+    quantity: 1
+- id: ord-wave-2
+  arrival_time: 400.0
+  priority: 1
+  deadline: 10000.0
+  items:
+  - sku: SKU-B
+    shelf_zone_id: shelf_b
+    quantity: 1
+- id: ord-wave-3
+  arrival_time: 900.0
+  priority: 1
+  deadline: 10000.0
+  items:
+  - sku: SKU-A
+    shelf_zone_id: shelf_a
+    quantity: 1
+disruptions: []
+stochastic_disruption: null
+run:
+  planning_mode: HTN_ONLY
+  coordination: cbs
+  strategic_replan: htn_fallback
+  disruption_stochastic_enabled: false
+  quiet: true
+  video:
+    enabled: false
+    output_dir: artifacts/videos
+    fps: 20
+    frame_dt: 0.1
+    width: 1200
+    height: 900
+    cell_size: 30
+    include_paths: false

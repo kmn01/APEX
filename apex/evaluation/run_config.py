@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from apex.planner.coordinator import PlanningMode
 
@@ -24,6 +24,19 @@ class StrategicReplanMode(str, Enum):
     LOCAL_ONLY = "local_only"  # Never strategic replan (not used in coordinator; driver skips)
 
 
+class VideoRecordingConfig(BaseModel):
+    """Optional per-episode video capture settings for pygame visualization."""
+
+    enabled: bool = False
+    output_dir: str = "artifacts/videos"
+    fps: int = 20
+    frame_dt: float = 0.1
+    width: int = 1200
+    height: int = 900
+    cell_size: int = 30
+    include_paths: bool = False
+
+
 class RunConfig(BaseModel):
     """Per-episode algorithm switches for benchmark sweeps."""
 
@@ -32,3 +45,4 @@ class RunConfig(BaseModel):
     strategic_replan: StrategicReplanMode = StrategicReplanMode.HTN_FALLBACK
     disruption_stochastic_enabled: bool = False
     quiet: bool = True
+    video: VideoRecordingConfig = Field(default_factory=VideoRecordingConfig)

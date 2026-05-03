@@ -1,0 +1,82 @@
+id: shelf_block_recovery
+seed: 3
+horizon: 6000.0
+grid_rows: 16
+grid_cols: 16
+agents:
+- id: picker-0
+  row: 0
+  col: 0
+shelves:
+- id: shelf_a
+  positions:
+  - - 4
+    - 6
+  capacity: 100
+- id: shelf_b
+  positions:
+  - - 4
+    - 10
+  capacity: 100
+conveyor:
+  id: conv_main
+  positions:
+  - - 9
+    - 4
+  - - 9
+    - 5
+  - - 9
+    - 6
+  - - 9
+    - 7
+  - - 9
+    - 8
+  - - 9
+    - 9
+  - - 9
+    - 10
+  - - 9
+    - 11
+  direction: E
+  speed: 2.0
+bay_id: bay_out
+bay_position:
+- 14
+- 8
+shelf_zone_ids:
+- shelf_a
+- shelf_b
+orders:
+- id: ord-0
+  arrival_time: 0.0
+  priority: 1
+  deadline: 10000.0
+  items:
+  - sku: SKU-A
+    shelf_zone_id: shelf_a
+    quantity: 1
+  - sku: SKU-B
+    shelf_zone_id: shelf_b
+    quantity: 1
+disruptions:
+- time: 50.0
+  kind: shelf_block
+  payload:
+    shelf_id: shelf_a
+    duration: 30.0
+stochastic_disruption: null
+run:
+  planning_mode: HTN_ONLY
+  coordination: cbs
+  strategic_replan: htn_fallback
+  disruption_stochastic_enabled: false
+  quiet: true
+  video:
+    enabled: false
+    output_dir: artifacts/videos
+    fps: 20
+    frame_dt: 0.1
+    width: 1200
+    height: 900
+    cell_size: 30
+    include_paths: false

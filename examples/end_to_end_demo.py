@@ -1,5 +1,8 @@
 """End-to-end demo: planning → adaptation → execution → visualization."""
 
+import argparse
+from datetime import datetime
+from pathlib import Path
 from collections.abc import Generator
 
 import simpy
@@ -72,7 +75,16 @@ def _drive_executor_queue(
         executor.mark_completed(instr)
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="APEX end-to-end visualization demo")
+    parser.add_argument("--record-video", action="store_true", help="Record visualization to MP4")
+    parser.add_argument("--video-output", default="artifacts/videos", help="Video output directory")
+    parser.add_argument("--video-fps", type=int, default=20, help="MP4 frame rate")
+    return parser.parse_args()
+
+
 def main():
+    args = _parse_args()
     # Create warehouse
     env = simpy.Environment()
     grid = Grid(20, 20, env)
@@ -230,23 +242,50 @@ def main():
             f"(up to {max_frames} frames).\n"
         )
 
-        for frame in range(max_frames):
-            if not viz.paused:
-                env.run(until=env.now + sim_dt)
-            actions = executor.get_agent_actions()
-            if not viz.render(
-                agents=agents,
-                paths=paths or None,
-                time=env.now,
-                actions=actions,
-            ):
-                break
+        recorder = None
+        if args.record_video:
+            from apex.visualization.recorder import VideoRecorder
 
-            if frame % 40 == 0:
-                print(f"Frame {frame}: sim_t={env.now:.2f}s, agents={len(agents)}")
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = Path(args.video_output) / f"end_to_end_demo_{ts}.mp4"
+            recorder = VideoRecorder(output_path, fps=max(1, args.video_fps))
+            print(f"Recording enabled: {output_path}")
 
-        viz.close()
+        interrupted = False
+        try:
+            for frame in range(max_frames):
+                try:
+                    if not viz.paused:
+                        env.run(until=env.now + sim_dt)
+                    actions = executor.get_agent_actions()
+                    if not viz.render(
+                        agents=agents,
+                        paths=paths or None,
+                        time=env.now,
+                        actions=actions,
+                    ):
+                        break
+                    if recorder is not None:
+                        recorder.write_frame(viz.frame_rgb())
+
+                    if frame % 40 == 0:
+                        print(f"Frame {frame}: sim_t={env.now:.2f}s, agents={len(agents)}")
+                except KeyboardInterrupt:
+                    interrupted = True
+                    break
+        finally:
+            if recorder is not None:
+                try:
+                    recorder.close()
+                except BaseException:
+                    pass
+            try:
+                viz.close()
+            except BaseException:
+                pass
         print("\nVisualization closed.")
+        if interrupted:
+            raise KeyboardInterrupt from None
     else:
         print("\n[VIZ] Pygame not installed. Skipping visualization.")
         print("Install with: pip install -e '.[viz]'")

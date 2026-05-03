@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import contextlib
+from datetime import datetime
 import io
+from pathlib import Path
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
@@ -165,6 +167,7 @@ class EpisodeDriver:
         self._run_config: RunConfig = scenario.run
         self._agent_loops_started = False
         self._plan_dirty = False
+        self._last_planned_paths: dict[str, list[tuple[int, int]]] = {}
 
     def run(self) -> "EpisodeMetrics":
         from apex.evaluation.metrics import EpisodeMetrics
@@ -192,8 +195,109 @@ class EpisodeDriver:
                 self.env.process(gen.run())
             for d in self.scenario.disruptions:
                 self.env.process(self._scripted_disruption(d.time, d.kind, d.payload))
-            self.env.run(until=self.scenario.horizon)
+            if self._run_config.video.enabled:
+                self._run_with_visualization_and_recording()
+            else:
+                self.env.run(until=self.scenario.horizon)
         return self.collector.compute_episode_metrics()
+
+    def _run_with_visualization_and_recording(self) -> None:
+        from apex.visualization.recorder import VideoRecorder
+        from apex.visualization.viewer import WarehouseVisualizer
+
+        cfg = self._run_config.video
+        viz: WarehouseVisualizer | None = None
+        recorder: VideoRecorder | None = None
+        interrupted = False
+        step_dt = max(cfg.frame_dt, 0.01)
+
+        def _safe_finalize() -> None:
+            nonlocal recorder, viz
+            if recorder is not None:
+                try:
+                    recorder.close()
+                except BaseException:
+                    pass
+                recorder = None
+            if viz is not None:
+                try:
+                    viz.close()
+                except BaseException:
+                    pass
+                viz = None
+
+        try:
+            viz = WarehouseVisualizer(
+                self.warehouse,
+                width=cfg.width,
+                height=cfg.height,
+                cell_size=cfg.cell_size,
+                scenario=self.scenario,
+            )
+            recorder = VideoRecorder(self._video_output_path(), fps=cfg.fps)
+            while self.env.now < self.scenario.horizon:
+                try:
+                    if self._episode_complete():
+                        break
+                    step_to = min(self.scenario.horizon, self.env.now + step_dt)
+                    self.env.run(until=step_to)
+                    actions = self.executor.get_agent_actions()
+                    agents = self.coordinator.agent_registry.get_all_agents()
+                    paths = self._last_planned_paths if cfg.include_paths else None
+                    if not viz.render(
+                        agents=agents,
+                        paths=paths,
+                        time=self.env.now,
+                        actions=actions,
+                    ):
+                        break
+                    recorder.write_frame(viz.frame_rgb())
+                except KeyboardInterrupt:
+                    interrupted = True
+                    break
+        finally:
+            _safe_finalize()
+
+        if interrupted:
+            raise KeyboardInterrupt from None
+
+    def _episode_complete(self) -> bool:
+        """True when no unfinished work remains for the scenario."""
+        agents = self.coordinator.agent_registry.get_all_agents()
+        queues_empty = all(
+            len(self.executor._agent_queues.get(a.id, [])) == 0  # noqa: SLF001
+            for a in agents
+            if not a.should_stop
+        ) or not agents
+        if not queues_empty:
+            return False
+
+        pending = any(o.status == OrderStatus.PENDING for o in self.warehouse.pending_orders)
+        if pending:
+            return False
+
+        active_incomplete = any(
+            o.status not in (OrderStatus.COMPLETE, OrderStatus.FAILED)
+            for o in self.warehouse.active_orders
+        )
+        if active_incomplete:
+            return False
+
+        # Before the first env.run slice, scripted orders may not be materialized yet; do not exit early.
+        for spec in self.scenario.orders:
+            if spec.arrival_time > self.env.now:
+                return False
+            o = self.orders_by_id.get(spec.id)
+            if o is None or o.status not in (OrderStatus.COMPLETE, OrderStatus.FAILED):
+                return False
+
+        return True
+
+    def _video_output_path(self) -> Path:
+        cfg = self._run_config.video
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{self.scenario.id}_seed{self.scenario.seed}_{ts}.mp4"
+        return Path(cfg.output_dir) / filename
 
     def _setup_world(self) -> None:
         env, wh, registry = build_warehouse_and_registry(self.scenario)
@@ -279,7 +383,7 @@ class EpisodeDriver:
                 self.warehouse,
             )
             if isinstance(res, EscalationSignal):
-                yield from self._handle_escalation(res)
+                self._handle_escalation(res)
 
     def _orchestrator(self):
         """Activate orders, plan when queues drain, and keep workers alive until horizon."""
@@ -340,6 +444,7 @@ class EpisodeDriver:
         )
         moves = _extract_move_sequence(instrs)
         gpaths = _greedy_paths_for_moves(moves, self._positions)
+        self._last_planned_paths = gpaths
         conflicts = count_pairwise_spacetime_conflicts(gpaths)
         self.collector.record_event(
             "planned_spacetime_conflict_total",

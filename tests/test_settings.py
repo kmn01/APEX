@@ -40,7 +40,12 @@ def test_get_settings_cache_clear(monkeypatch):
 
 
 def test_map_rollout_stage_full():
-    s = ApexSettings(map_enabled=True, map_apply_plan=True, map_apply_replan=False)
+    s = ApexSettings(
+        map_enabled=True,
+        map_apply_plan=True,
+        map_apply_replan=False,
+        map_replan_shadow=False,
+    )
     assert map_rollout_stage(s) == "full"
 
 
@@ -55,5 +60,10 @@ def test_map_rollout_stage_apply_replan_only():
 
 
 def test_map_rollout_stage_enabled_but_no_apply_flags():
-    s = ApexSettings(map_enabled=True, map_apply_plan=False, map_apply_replan=False)
+    s = ApexSettings(
+        map_enabled=True,
+        map_apply_plan=False,
+        map_apply_replan=False,
+        map_replan_shadow=False,
+    )
     assert map_rollout_stage(s) == "disabled"

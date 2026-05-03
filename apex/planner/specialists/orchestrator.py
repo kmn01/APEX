@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING
+
+_log = logging.getLogger(__name__)
 
 from apex.agents.registry import AgentRegistry
 from apex.config.settings import ApexSettings, get_settings
@@ -120,8 +123,18 @@ class MapOrchestrator:
         if self._injected_client is not None:
             return self._injected_client
         if not self._settings.gemini_api_key:
+            _log.warning(
+                "MAP/Gemini: GEMINI_API_KEY is not set; continuing without LLM (baseline only)."
+            )
             return None
-        return GeminiJsonClient.from_settings(self._settings)
+        try:
+            return GeminiJsonClient.from_settings(self._settings)
+        except Exception as exc:  # noqa: BLE001 — fallback to non-LLM run
+            _log.warning(
+                "MAP/Gemini: failed to initialize Gemini client; continuing without LLM: %s",
+                exc,
+            )
+            return None
 
     def plan_refine(
         self,
@@ -205,6 +218,7 @@ class MapOrchestrator:
 
             return merged, trace
         except Exception as exc:  # noqa: BLE001
+            _log.warning("MAP/Gemini: LLM plan_refine failed; using baseline fallback: %s", exc)
             trace.raw_errors.append(str(exc))
             trace.fallback_used = True
             return None, trace
@@ -283,6 +297,7 @@ class MapOrchestrator:
 
             return delta, trace
         except Exception as exc:  # noqa: BLE001
+            _log.warning("MAP/Gemini: LLM replan_propose_delta failed; using empty delta: %s", exc)
             trace.raw_errors.append(str(exc))
             trace.fallback_used = True
             return None, trace

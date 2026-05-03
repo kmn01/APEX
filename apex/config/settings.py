@@ -1,23 +1,46 @@
 """Typed environment settings (pydantic-settings).
 
-Gemini and MAP flags are optional; missing ``GEMINI_API_KEY`` disables live LLM calls
-unless tests inject a mock client.
+Gemini and MAP are on by default; missing ``GEMINI_API_KEY`` or a failed client init
+falls back to baseline planning (see :class:`~apex.planner.specialists.orchestrator.MapOrchestrator`).
+Tests may inject a mock client.
 """
 
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _dotenv_paths() -> tuple[str, ...] | None:
+    """Resolve ``.env`` relative to repo root then cwd.
+
+    Pydantic loads files in order; later files override earlier ones, so a cwd
+    ``.env`` wins over the checkout copy when both exist.
+    """
+    repo_env = Path(__file__).resolve().parents[2] / ".env"
+    cwd_env = Path(".env")
+    merged: list[Path] = []
+    seen_resolved: set[Path] = set()
+    for p in (repo_env, cwd_env):
+        if not p.is_file():
+            continue
+        r = p.resolve()
+        if r in seen_resolved:
+            continue
+        seen_resolved.add(r)
+        merged.append(p)
+    return tuple(str(x) for x in merged) if merged else None
+
+
 class ApexSettings(BaseSettings):
     """Central settings loaded from environment (and optional ``.env``)."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_dotenv_paths(),
         env_file_encoding="utf-8",
         extra="ignore",
         populate_by_name=True,
@@ -32,25 +55,25 @@ class ApexSettings(BaseSettings):
         validation_alias=AliasChoices("GEMINI_MODEL", "gemini_model"),
     )
 
-    # MAP / Gemini planner flags (explicit APEX_* env names)
+    # MAP / Gemini planner flags (explicit APEX_* env names; override to disable or shadow-only)
     map_enabled: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices("APEX_MAP_ENABLED", "map_enabled"),
     )
     map_apply_plan: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices("APEX_MAP_APPLY_PLAN", "map_apply_plan"),
     )
     map_apply_replan: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices("APEX_MAP_APPLY_REPLAN", "map_apply_replan"),
     )
     map_replan_shadow: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices("APEX_MAP_REPLAN_SHADOW", "map_replan_shadow"),
     )
     map_plan_shadow: bool = Field(
-        default=False,
+        default=True,
         validation_alias=AliasChoices("APEX_MAP_PLAN_SHADOW", "map_plan_shadow"),
     )
 

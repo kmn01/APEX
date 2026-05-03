@@ -30,6 +30,8 @@ llm = [
 ]
 viz = [
     "pygame-ce>=2.5",
+    "imageio>=2.34",
+    "imageio-ffmpeg>=0.5",
 ]
 
 [tool.setuptools.packages.find]

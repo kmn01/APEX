@@ -8,11 +8,12 @@
 | --- | --- | --- |
 | Simulation | Grid, warehouse state, orders, stochastic events | `apex/simulation/` |
 | Agents | Picker, carrier, sorter bots; fleet registry | `apex/agents/` |
-| Tactical | A* + reservation-table pathfinding, task executor, local replanner | `apex/tactical/` |
+| Tactical | CBS (+ constrained A*) for batched **`MOVE_TO`**, reservation-table A* fallback, executor, replanner | `apex/tactical/` |
 | Adapter | SKU/bay/conveyor resolution and task translation | `apex/adapter/` |
 | Planner | HTN operators/methods/planner; **UCT MCTS** assignment (`PlanningMode.MCTS_AUGMENTED`; feasibility + static costs) | `apex/planner/` |
 | Comms | Shared blackboard for agent intentions | `apex/comms/` |
-| Evaluation | Metrics collector and scenario runner | `apex/evaluation/` |
+| Evaluation | Metrics, `EpisodeDriver`, `ExperimentRunner`, scenario I/O | `apex/evaluation/` |
+| Scenarios | Typed `ScenarioSpec`, catalog/YAML loaders, warehouse builder | `apex/scenarios/` |
 
 **Conventions**
 
@@ -30,11 +31,11 @@ cd APEX
 # Create virtual environment
 python -m venv .venv
 source .venv/bin/activate
-# Install with development + visualization
+# Install with development + visualization (pygame + imageio MP4 recording)
 pip install -e ".[dev,viz]"
 ```
 
-Optional groups: `viz` (pygame-ce), `llm` (Gemini / MAP-style planner).
+Optional groups: `viz` (pygame-ce, imageio / ffmpeg for recording), `eval` (matplotlib, PyYAML for analysis-style extras), `llm` (Gemini / MAP-style planner).
 
 ### MAP-style Gemini planner (optional)
 
@@ -46,12 +47,8 @@ pip install -e ".[dev,llm]"
 GEMINI_API_KEY=...
 # GEMINI_MODEL=gemini-2.0-flash   # optional
 
-# Feature flags (namespaced)
-APEX_MAP_ENABLED=true
-APEX_MAP_APPLY_PLAN=false        # set true to merge MAP-refined graphs after HTN/MCTS
-APEX_MAP_APPLY_REPLAN=false      # set true to return validated TaskGraphDelta from MAP
-APEX_MAP_REPLAN_SHADOW=false     # if true: run MAP on replan but always return empty delta (log only)
-APEX_MAP_PLAN_SHADOW=false       # if true: run MAP on plan but keep baseline graph
+# MAP defaults to on in settings; override only if needed, for example:
+# APEX_MAP_ENABLED=false
 ```
 
 Flow: `StrategicCoordinator` runs HTN (and MCTS when enabled), then optionally runs a **MAP** pipeline (decomposition → prediction → monitoring → coordination) via `MapOrchestrator` and `GeminiJsonClient`. Invalid or unparsable LLM output **falls back** to the deterministic baseline. See [docs/MAP_Gemini_Rollout.md](docs/MAP_Gemini_Rollout.md) for rollout stages and guardrails.
@@ -83,13 +80,28 @@ python -m apex.planner.htn.planner
 
 ```bash
 python examples/end_to_end_demo.py
+# Optional: capture MP4 (requires pip install -e ".[viz]")
+python examples/end_to_end_demo.py --record-video --video-output artifacts/videos
 ```
 
 This will:
 - Create a 20×20 warehouse grid
-- Plan 2 orders into 8 task nodes
-- Generate 6 concrete instructions
-- Display live visualization with 2 agents
+- Plan 2 orders into a task graph (node count depends on HTN decomposition)
+- Translate a small abstract-task slice into concrete instructions
+- Display live visualization with 2 agents when pygame is installed
+
+## Run catalog or YAML scenarios (evaluation CLI)
+
+Uses **`EpisodeDriver`** + **`ScenarioSpec`** (deterministic horizons, optional CBS coordination, scripted disruptions, **`StrategicCoordinator`** replan paths). Writes metrics and events under `--output`.
+
+```bash
+pip install -e ".[dev,viz]"   # viz only if using --record-video
+python scripts/run_scenario.py --scenario two_agents_crossing --output runs/demo
+python scripts/run_scenario.py --yaml apex/scenarios/data/single_order.yaml --output runs/demo2 \
+  --planning-mode MCTS_AUGMENTED --coordination cbs --record-video
+```
+
+See [docs/Scenario_Test_Suite.md](docs/Scenario_Test_Suite.md) for the full YAML suite (`apex/scenarios/data/suite/`), expected metrics, and copy-paste commands.
 
 ---
 
