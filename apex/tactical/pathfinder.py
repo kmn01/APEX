@@ -14,6 +14,10 @@ import heapq
 
 from apex.common.geometry import manhattan_distance as manhattan_metric
 
+Pos = tuple[int, int]
+VertexConstraint = tuple[Pos, int]
+EdgeConstraint = tuple[Pos, Pos, int]
+
 
 @dataclass(frozen=True)
 class Reservation:
@@ -129,61 +133,78 @@ class SimplePathfinder:
         Returns:
             List of positions from start to goal (inclusive), or None if no path.
         """
+        return self.find_path_with_constraints(
+            start=start,
+            goal=goal,
+            reservation_table=reservation_table,
+            max_time=int(max_time),
+        )
+
+    def find_path_with_constraints(
+        self,
+        start: Pos,
+        goal: Pos,
+        *,
+        reservation_table: ReservationTable | None = None,
+        vertex_constraints: set[VertexConstraint] | None = None,
+        edge_constraints: set[EdgeConstraint] | None = None,
+        max_time: int = 1000,
+    ) -> list[Pos] | None:
+        """Find path with optional reservation-table and CBS-style constraints."""
         if not self.grid.is_walkable(start) or not self.grid.is_walkable(goal):
             return None
+        if max_time < 0:
+            return None
 
-        if start == goal:
-            return [start]
+        v_constraints = vertex_constraints or set()
+        e_constraints = edge_constraints or set()
+        if (start, 0) in v_constraints:
+            return None
 
-        # A* search: (f_score, counter, position, path, current_time)
+        # A* over (position, time). Includes wait action (stay in place).
         counter = 0
-        open_set: list[tuple[float, int, tuple[int, int], list, float]] = [
-            (0, counter, start, [start], 0.0)
+        open_set: list[tuple[float, int, Pos, list[Pos], int]] = [
+            (float(manhattan_metric(start, goal)), counter, start, [start], 0)
         ]
-        closed_set: set[tuple[tuple[int, int], float]] = set()
+        closed_set: set[tuple[Pos, int]] = set()
 
         while open_set:
-            f_score, _, current_pos, path, current_time = heapq.heappop(open_set)
+            _, _, current_pos, path, current_time = heapq.heappop(open_set)
+            if (current_pos, current_time) in closed_set:
+                continue
+            closed_set.add((current_pos, current_time))
 
-            # Check if we reached the goal
             if current_pos == goal:
                 return path
-
-            # Prevent infinite loops
-            if current_time > max_time:
-                return None
-
-            state = (current_pos, current_time)
-            if state in closed_set:
+            if current_time >= max_time:
                 continue
-            closed_set.add(state)
 
-            # Explore neighbors
-            for neighbor_pos in self.grid.neighbors(current_pos):
-                if not self.grid.is_walkable(neighbor_pos):
+            candidates = list(self.grid.neighbors(current_pos))
+            candidates.append(current_pos)  # Wait action
+
+            for next_pos in candidates:
+                if not self.grid.is_walkable(next_pos):
                     continue
 
-                # Check reservation table
-                next_time = current_time + 1.0
-                if reservation_table and reservation_table.is_reserved(
-                    neighbor_pos, next_time
-                ):
+                next_time = current_time + 1
+                if reservation_table and reservation_table.is_reserved(next_pos, float(next_time)):
+                    continue
+                if (next_pos, next_time) in v_constraints:
+                    continue
+                if (current_pos, next_pos, next_time) in e_constraints:
                     continue
 
-                g_score = len(path)  # Cost = number of steps
-                h_score = float(manhattan_metric(neighbor_pos, goal))
-                f_score_new = g_score + h_score
+                next_state = (next_pos, next_time)
+                if next_state in closed_set:
+                    continue
 
-                new_state = (neighbor_pos, next_time)
-                if new_state not in closed_set:
-                    counter += 1
-                    new_path = path + [neighbor_pos]
-                    heapq.heappush(
-                        open_set,
-                        (f_score_new, counter, neighbor_pos, new_path, next_time),
-                    )
+                g_score = len(path)
+                h_score = float(manhattan_metric(next_pos, goal))
+                f_score = g_score + h_score
+                counter += 1
+                heapq.heappush(open_set, (f_score, counter, next_pos, path + [next_pos], next_time))
 
-        return None  # No path found
+        return None
 
 
 if __name__ == "__main__":

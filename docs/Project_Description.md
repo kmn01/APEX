@@ -10,7 +10,7 @@ The architecture is composed of five interacting components:
 
 - **Strategic Planner (Layer 1)** — Receives order batches and performs goal decomposition and assignment. It uses hand-authored HTN methods (`HTNPlanner`) and can optionally run UCT MCTS assignment via `PlanningMode.MCTS_AUGMENTED`. Output is a `TaskGraph` with task types, dependencies, and optional `agent_id` assignments.
 - **Domain Adapter (Layer 2)** — Resolves abstract tasks into concrete resources and instructions. `TaskResolver` maps warehouse entities; `DomainTranslator` emits executable `TaskInstruction` records.
-- **Tactical Executor (Layer 3)** — Runs per-agent instruction queues and local repair. Path planning uses A* with a space-time reservation table (`SimplePathfinder` + `ReservationTable`), and disruption handling uses `LocalReplanner` with escalation to strategic replanning when local repair is insufficient.
+- **Tactical Executor (Layer 3)** — Runs per-agent instruction queues and local repair. Tactical routing now includes full Conflict-Based Search (`CBSPlanner`) with constrained low-level A* (`SimplePathfinder.find_path_with_constraints`) for concurrent `MOVE_TO` coordination; reservation-table A* (`SimplePathfinder` + `ReservationTable`) remains available as a fallback path. Disruption handling uses `LocalReplanner` with escalation to strategic replanning when local repair is insufficient.
 - **Agent Pool** — Heterogeneous agents with different capabilities and constraints; strategic assignment checks feasibility through `Agent.can_perform`.
 - **Warehouse Simulation Environment** — Grid-based SimPy environment modeling shelves, conveyors, bays, and stochastic disruptions/events.
 

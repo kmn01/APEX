@@ -14,6 +14,8 @@ from typing import Any
 import simpy
 from pydantic import BaseModel
 
+from apex.tactical.cbs import CBSPlanner
+
 
 class TaskInstruction(BaseModel):
     """Single executable directive for one agent."""
@@ -30,8 +32,9 @@ class TaskInstruction(BaseModel):
 class TacticalExecutor:
     """Dispatches :class:`TaskInstruction` records and advances simulation."""
 
-    def __init__(self, env: simpy.Environment) -> None:
+    def __init__(self, env: simpy.Environment, cbs_planner: CBSPlanner | None = None) -> None:
         self.env = env
+        self._cbs_planner = cbs_planner
         self._agent_actions: dict[str, str] = {}
         self._agent_queues: dict[str, deque[TaskInstruction]] = defaultdict(deque)
         self._completed_instructions: list[TaskInstruction] = []
@@ -50,10 +53,61 @@ class TacticalExecutor:
         self._agent_queues[instruction.agent_id].append(instruction)
         self._agent_actions[instruction.agent_id] = f"QUEUED: {instruction.action_type}"
 
-    def assign_batch(self, instructions: list[TaskInstruction]) -> None:
+    def assign_batch(
+        self,
+        instructions: list[TaskInstruction],
+        *,
+        agent_positions: dict[str, tuple[int, int]] | None = None,
+    ) -> None:
         """Queue multiple instructions efficiently."""
+        if self._cbs_planner is not None and agent_positions is not None:
+            instructions = self.plan_move_batch_with_cbs(instructions, agent_positions)
         for instr in instructions:
             self.assign(instr)
+
+    def plan_move_batch_with_cbs(
+        self,
+        instructions: list[TaskInstruction],
+        agent_positions: dict[str, tuple[int, int]],
+    ) -> list[TaskInstruction]:
+        """Expand simultaneous MOVE_TO instructions into conflict-free waypoint moves."""
+        if self._cbs_planner is None:
+            return instructions
+
+        move_instrs = [
+            instr
+            for instr in instructions
+            if instr.action_type == "MOVE_TO" and instr.target_pos is not None
+        ]
+        if len(move_instrs) < 2:
+            return instructions
+
+        starts: dict[str, tuple[int, int]] = {}
+        goals: dict[str, tuple[int, int]] = {}
+        for instr in move_instrs:
+            if instr.agent_id not in agent_positions:
+                return instructions
+            starts[instr.agent_id] = agent_positions[instr.agent_id]
+            goals[instr.agent_id] = instr.target_pos  # guarded above
+
+        planned_paths = self._cbs_planner.plan_paths(starts=starts, goals=goals)
+        if planned_paths is None:
+            return instructions
+
+        expanded: list[TaskInstruction] = []
+        for instr in instructions:
+            if instr.action_type != "MOVE_TO" or instr.target_pos is None:
+                expanded.append(instr)
+                continue
+
+            path = planned_paths.get(instr.agent_id)
+            if not path or len(path) <= 1:
+                expanded.append(instr)
+                continue
+
+            for waypoint in path[1:]:
+                expanded.append(instr.model_copy(update={"target_pos": waypoint}))
+        return expanded
 
     def get_next_instruction(self, agent_id: str) -> TaskInstruction | None:
         """Retrieve next instruction for an agent, or None if queue empty."""

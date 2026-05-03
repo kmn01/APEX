@@ -55,7 +55,7 @@ flowchart TB
 
   subgraph tact["apex.tactical"]
     Ex["TacticalExecutor"]
-    PF["SimplePathfinder + ReservationTable"]
+    PF["CBSPlanner + constrained A*"]
     Rep["LocalReplanner"]
   end
 
@@ -115,13 +115,13 @@ flowchart TB
 
 **What it is** The **tactical** layer: queues of `TaskInstruction`, optional **multi-agent–style** routing with a **reservation table**, and `LocalReplanner` for structured disruptions.
 
-**What it does** `TacticalExecutor` queues per-agent instructions and exposes labels for telemetry. `ReservationTable` records space–time claims. `SimplePathfinder` runs **A\*** on the `Grid` while respecting existing reservations. `LocalReplanner.handle` returns either a small `Resolution` (e.g. detour `TaskInstruction`) or `EscalationSignal`.
+**What it does** `TacticalExecutor` queues per-agent instructions and exposes labels for telemetry. `CBSPlanner` runs high-level conflict resolution over a constraint tree and calls constrained low-level A* (`SimplePathfinder.find_path_with_constraints`) to produce conflict-free multi-agent routes for concurrent `MOVE_TO` work. `ReservationTable` plus `SimplePathfinder.find_path` remains available as a simpler fallback mechanism. `LocalReplanner.handle` returns either a small `Resolution` (detour or CBS-generated waypoints) or `EscalationSignal`.
 
 **Why it exists** So **low-level** failures (blocked path, bad pick) can be **classified and handled** without always rerunning full strategic planning. Separating the executor from `HTNPlanner` matches the intended research architecture (tactical repair vs. strategic replan).
 
 **Key interactions** `DomainTranslator` produces `TaskInstruction` objects. Demos may run executor-driven processes by hand. `StrategicCoordinator.replan` consumes `EscalationSignal` when MAP is enabled (`docs/MAP_Gemini_Rollout.md`). Pathfinding is used from tests and `__main__` blocks; the bundled end-to-end example does not currently call `SimplePathfinder` (see diagram note).
 
-**Algorithms (see [Algorithms / non-obvious mechanics](#algorithms--non-obvious-mechanics))** A* + reservation checks; module header names CBS-style *conflict handling*; the code does not implement a full **Conflict-Based Search** tree search as a separate routine.
+**Algorithms (see [Algorithms / non-obvious mechanics](#algorithms--non-obvious-mechanics))** Full CBS high/low search (`CBSPlanner`) with constrained low-level A*; reservation checks remain available as fallback (`ReservationTable`).
 
 ---
 
@@ -193,7 +193,8 @@ flowchart TB
 | --- | --- | --- |
 | **A* on a grid** | `SimplePathfinder.find_path` uses a binary heap, expands neighbors on the static grid, and treats **time** as one step per move for reservation checks. | Russell & Norvig, *Artificial Intelligence: A Modern Approach* (A* and heuristics); [SimPy](https://simpy.readthedocs.io/) for the simulation clock used elsewhere. |
 | **Heuristic** | **Manhattan distance** to the goal (admissible on a 4-connected grid with unit cost). | Standard admissible heuristic for grid MAPF with Manhattan moves. |
-| **Reservation table** | Agents (or tests) pre-register `(position, time)`; A* **skips** moves that would enter a reserved slot. This implements **deconfliction by forbidden space–time** rather than a full multi-agent **CBS** constraint tree. | Multi-agent pathfinding background: Shomon & Felner, “Conflict-based search for optimal multi-agent pathfinding” *Artificial Intelligence* (2015) explains **full** CBS; this repo’s **mechanism** is closer to a **fixed reservation** + single-agent replan (variant / simplified). |
+| **CBS conflict resolution** | `CBSPlanner` performs best-first search over constraint-tree nodes (sum-of-cost objective), detects vertex/edge conflicts, branches constraints, and replans only affected agents with constrained A*. | D. Shomon et al., “Conflict-based search for optimal multi-agent pathfinding” *Artificial Intelligence* (2015). |
+| **Reservation table fallback** | Agents (or tests) may still pre-register `(position, time)`; `SimplePathfinder.find_path` skips reserved slots for lightweight deconfliction when full CBS is unnecessary. | Useful simplified mechanism for deterministic fallback behavior in tactical code paths. |
 | **MCTS (assignment)** | `MCTSSearch` runs **UCT** over partial assignments: **`AssignmentDomain`** supplies legal `(task_id, agent_id)` moves (compatibility via `can_perform`); rollouts complete remaining tasks uniformly at random; terminal **value** uses **`default_assignment_cost`** (tabular `TaskType` costs, reward = −cost). Best complete state seen across iterations is returned. Extend by swapping `terminal_reward` or enriching costs. | Kocsis & Szepesvári, “Bandit based Monte-Carlo planning” (2006) for **UCT**; [official draft PDF](https://ccg.szu.edu.cn/papers/Teaching/Material/BanditBasedMonte-CarloPlanning.pdf) is widely cited. |
 | **HTN** | **Project-specific** methods in `BUILT_IN_METHODS`; the planner does not call an external HTN library. | HTN planning survey: Nau, *HTN planning* / Ghallab et al., *Automated Planning*; treat this codebase as a **toy** HTN for the simulation. |
 
@@ -252,7 +253,7 @@ flowchart TB
 ## Out of scope / known limits
 
 - **`StrategicCoordinator.replan`** supports an optional **MAP/Gemini** path with validated `TaskGraphDelta` output; **ExperimentRunner** episode driver remains a stub. **`MCTSSearch.search`** and **`PlanningMode.MCTS_AUGMENTED`** are **implemented**. Narrative in `Project_Description.md` still describes several **targets** (e.g. full utility over proximity/load/congestion); this guide reflects the **code as checked in**.
-- **`apex.tactical.pathfinder` module** docstring says “CBS”; the implementation is **A* + `ReservationTable`**, not a full **CBS** high/low search loop—see [Algorithms](#algorithms--non-obvious-mechanics).
+- Full CBS now lives in `apex.tactical.cbs` (`CBSPlanner`) while `apex.tactical.pathfinder` still provides reservation-table A* as a compatibility fallback.
 - **HTN method selection** is priority- and applicability-based (`_select_method`): when multiple methods match the same task, the highest-priority applicable method is chosen (for example, direct-bay routing is selected when adjacency checks pass).
 - **`config/`** and **`experiments/`** files exist; not every key may be read by a single top-level script—**confirm** the driver you use before assuming a parameter is live.
 - **Tests** in `tests/` are a **subset** of what the Implementation Plan once listed; run `pytest` for current behavior.

@@ -11,6 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from apex.tactical.cbs import CBSPlanner
 from apex.tactical.executor import TaskInstruction
 
 
@@ -47,10 +48,16 @@ class EscalationSignal(BaseModel):
 class LocalReplanner:
     """Fast, localized response to :class:`Disruption` events."""
 
-    def __init__(self, horizon: float = 50.0, escalation_threshold: int = 3) -> None:
+    def __init__(
+        self,
+        horizon: float = 50.0,
+        escalation_threshold: int = 3,
+        cbs_planner: CBSPlanner | None = None,
+    ) -> None:
         self.horizon = horizon
         self.escalation_threshold = escalation_threshold  # Escalate if >N conflicts
         self.conflict_count: dict[str, int] = {}
+        self._cbs_planner = cbs_planner
 
     def __repr__(self) -> str:
         return f"LocalReplanner(horizon={self.horizon}, threshold={self.escalation_threshold})"
@@ -70,13 +77,17 @@ class LocalReplanner:
             if agent_id not in self.conflict_count:
                 self.conflict_count[agent_id] = 0
             self.conflict_count[agent_id] += 1
-            
+
+            cbs_resolution = self._attempt_cbs_reroute(disruption, agent_id)
+            if cbs_resolution is not None:
+                return cbs_resolution
+
             if self.conflict_count[agent_id] > self.escalation_threshold:
                 return EscalationSignal(
                     reason=f"Agent {agent_id} blocked path >{ self.escalation_threshold} times",
                     disruption=disruption,
                 )
-            
+
             # Local reroute: create detour instruction
             detour_instr = TaskInstruction(
                 agent_id=agent_id,
@@ -107,6 +118,34 @@ class LocalReplanner:
                 reason=f"Unknown disruption type: {disruption.type}",
                 disruption=disruption,
             )
+
+    def _attempt_cbs_reroute(self, disruption: Disruption, agent_id: str) -> Resolution | None:
+        """Try CBS reroute when starts/goals are provided in disruption context."""
+        if self._cbs_planner is None:
+            return None
+
+        starts = disruption.context.get("cbs_starts")
+        goals = disruption.context.get("cbs_goals")
+        if not isinstance(starts, dict) or not isinstance(goals, dict):
+            return None
+        if agent_id not in starts or agent_id not in goals:
+            return None
+
+        paths = self._cbs_planner.plan_paths(starts=starts, goals=goals)
+        if paths is None:
+            return None
+
+        agent_path = paths.get(agent_id)
+        if not agent_path or len(agent_path) <= 1:
+            return None
+
+        revised = [
+            TaskInstruction(agent_id=agent_id, action_type="MOVE_TO", target_pos=waypoint)
+            for waypoint in agent_path[1:]
+        ]
+        if not revised:
+            return None
+        return Resolution(revised_instructions=revised)
 
 
 if __name__ == "__main__":

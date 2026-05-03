@@ -6,6 +6,18 @@ import simpy
 from apex.tactical.executor import TaskInstruction, TacticalExecutor
 
 
+class _StubCBSPlanner:
+    def __init__(self, result: dict[str, list[tuple[int, int]]] | None) -> None:
+        self.result = result
+        self.called = False
+
+    def plan_paths(
+        self, starts: dict[str, tuple[int, int]], goals: dict[str, tuple[int, int]]
+    ) -> dict[str, list[tuple[int, int]]] | None:
+        self.called = True
+        return self.result
+
+
 def test_tactical_executor_creation():
     """Test executor initialization."""
     env = simpy.Environment()
@@ -101,6 +113,52 @@ def test_repr_reports_active_agent_queues():
     queued_repr = repr(executor)
     assert "queued=1" in queued_repr
     assert "active_agents=1" in queued_repr
+
+
+def test_assign_batch_uses_cbs_for_concurrent_move_to():
+    env = simpy.Environment()
+    stub = _StubCBSPlanner(
+        result={
+            "picker-1": [(0, 0), (0, 1), (0, 2)],
+            "picker-2": [(2, 2), (2, 1), (2, 0)],
+        }
+    )
+    executor = TacticalExecutor(env, cbs_planner=stub)
+
+    instructions = [
+        TaskInstruction(agent_id="picker-1", action_type="MOVE_TO", target_pos=(0, 2)),
+        TaskInstruction(agent_id="picker-2", action_type="MOVE_TO", target_pos=(2, 0)),
+    ]
+    executor.assign_batch(
+        instructions,
+        agent_positions={"picker-1": (0, 0), "picker-2": (2, 2)},
+    )
+
+    assert stub.called is True
+    # Each path expands into two waypoint MOVE_TO instructions.
+    assert executor.get_next_instruction("picker-1").target_pos == (0, 1)
+    assert executor.get_next_instruction("picker-1").target_pos == (0, 2)
+    assert executor.get_next_instruction("picker-2").target_pos == (2, 1)
+    assert executor.get_next_instruction("picker-2").target_pos == (2, 0)
+
+
+def test_assign_batch_falls_back_when_cbs_fails():
+    env = simpy.Environment()
+    stub = _StubCBSPlanner(result=None)
+    executor = TacticalExecutor(env, cbs_planner=stub)
+
+    instructions = [
+        TaskInstruction(agent_id="picker-1", action_type="MOVE_TO", target_pos=(0, 2)),
+        TaskInstruction(agent_id="picker-2", action_type="MOVE_TO", target_pos=(2, 0)),
+    ]
+    executor.assign_batch(
+        instructions,
+        agent_positions={"picker-1": (0, 0), "picker-2": (2, 2)},
+    )
+
+    assert stub.called is True
+    assert executor.get_next_instruction("picker-1").target_pos == (0, 2)
+    assert executor.get_next_instruction("picker-2").target_pos == (2, 0)
 
 
 if __name__ == "__main__":
