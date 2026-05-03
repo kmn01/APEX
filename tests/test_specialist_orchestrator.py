@@ -99,3 +99,19 @@ def test_plan_refine_without_client_returns_none():
     )
     assert merged is None
     assert trace.fallback_used
+
+
+def test_plan_refine_with_client_requires_warehouse():
+    """When an LLM client is present, missing warehouse must not raise."""
+    settings = ApexSettings(map_enabled=True, gemini_api_key="fake")
+    orch = MapOrchestrator(settings=settings, gemini_client=_FakeJsonClient())
+    g = TaskGraph(nodes=[TaskNode(id="a", task_type=TaskType.PICK)], edges=[])
+    merged, trace = orch.plan_refine(
+        order_batch=OrderBatch(orders=[]),
+        warehouse_state=None,  # type: ignore[arg-type]
+        agent_registry=AgentRegistry(),
+        baseline_graph=g,
+    )
+    assert merged is None
+    assert trace.fallback_used
+    assert any("warehouse_state" in err for err in trace.raw_errors)

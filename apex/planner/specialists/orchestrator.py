@@ -106,6 +106,80 @@ def _build_replan_context(
     )
 
 
+def _invalidate_plan_refine_inputs(
+    *,
+    order_batch: OrderBatch | None,
+    warehouse_state: object | None,
+    agent_registry: object | None,
+    baseline_graph: TaskGraph | None,
+    trace: SpecialistTrace,
+) -> bool:
+    """If inputs are invalid, append errors to ``trace`` and return True."""
+    invalid = False
+    if order_batch is None:
+        trace.raw_errors.append("MAP plan_refine: order_batch is required.")
+        invalid = True
+    if warehouse_state is None:
+        trace.raw_errors.append("MAP plan_refine: warehouse_state is required.")
+        invalid = True
+    elif not isinstance(warehouse_state, WarehouseState):
+        trace.raw_errors.append(
+            "MAP plan_refine: warehouse_state must be a WarehouseState instance."
+        )
+        invalid = True
+    if agent_registry is None:
+        trace.raw_errors.append("MAP plan_refine: agent_registry is required.")
+        invalid = True
+    elif not isinstance(agent_registry, AgentRegistry):
+        trace.raw_errors.append(
+            "MAP plan_refine: agent_registry must be an AgentRegistry instance."
+        )
+        invalid = True
+    if baseline_graph is None:
+        trace.raw_errors.append("MAP plan_refine: baseline_graph is required.")
+        invalid = True
+    if invalid:
+        trace.fallback_used = True
+    return invalid
+
+
+def _invalidate_replan_inputs(
+    *,
+    escalation: EscalationSignal | None,
+    warehouse_state: object | None,
+    agent_registry: object | None,
+    current_graph: TaskGraph | None,
+    trace: SpecialistTrace,
+) -> bool:
+    """If inputs are invalid, append errors to ``trace`` and return True."""
+    invalid = False
+    if escalation is None:
+        trace.raw_errors.append("MAP replan_propose_delta: escalation is required.")
+        invalid = True
+    if warehouse_state is None:
+        trace.raw_errors.append("MAP replan_propose_delta: warehouse_state is required.")
+        invalid = True
+    elif not isinstance(warehouse_state, WarehouseState):
+        trace.raw_errors.append(
+            "MAP replan_propose_delta: warehouse_state must be a WarehouseState instance."
+        )
+        invalid = True
+    if agent_registry is None:
+        trace.raw_errors.append("MAP replan_propose_delta: agent_registry is required.")
+        invalid = True
+    elif not isinstance(agent_registry, AgentRegistry):
+        trace.raw_errors.append(
+            "MAP replan_propose_delta: agent_registry must be an AgentRegistry instance."
+        )
+        invalid = True
+    if current_graph is None:
+        trace.raw_errors.append("MAP replan_propose_delta: current_graph is required.")
+        invalid = True
+    if invalid:
+        trace.fallback_used = True
+    return invalid
+
+
 class MapOrchestrator:
     """Runs decomposition → prediction → monitoring → coordination (MAP-style)."""
 
@@ -150,6 +224,15 @@ class MapOrchestrator:
         if client is None:
             trace.raw_errors.append("MAP: no Gemini client (missing GEMINI_API_KEY or inject client).")
             trace.fallback_used = True
+            return None, trace
+
+        if _invalidate_plan_refine_inputs(
+            order_batch=order_batch,
+            warehouse_state=warehouse_state,
+            agent_registry=agent_registry,
+            baseline_graph=baseline_graph,
+            trace=trace,
+        ):
             return None, trace
 
         ctx = _build_planning_context(
@@ -237,6 +320,15 @@ class MapOrchestrator:
         if client is None:
             trace.raw_errors.append("MAP: no Gemini client (missing GEMINI_API_KEY or inject client).")
             trace.fallback_used = True
+            return None, trace
+
+        if _invalidate_replan_inputs(
+            escalation=escalation,
+            warehouse_state=warehouse_state,
+            agent_registry=agent_registry,
+            current_graph=current_graph,
+            trace=trace,
+        ):
             return None, trace
 
         ctx = _build_replan_context(escalation, warehouse_state, agent_registry, current_graph)
