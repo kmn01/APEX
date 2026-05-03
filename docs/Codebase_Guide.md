@@ -6,7 +6,7 @@ This is a map of the repository: what the system is, how major pieces relate, an
 
 ## Overview
 
-APEX (Adaptive Planning EXecution) is a Python research and education codebase for **hierarchical multi-agent planning** in a **grid-based warehouse** simulated with **SimPy** (discrete-event time). The “why” of the split across layers is to **separate** long-horizon *what to do* (strategic task graphs) from *where things are* in the world (domain binding) and from *how to move and react locally* (tactical instructions, path constraints, local disruption handling)—so teams can grow each concern independently and test it in isolation. The repository delivers working simulation types, a concrete **HTN-style** order-to-task decomposer, a **domain adapter** that turns abstract tasks into `TaskInstruction` records, a **tactical executor** and **local replanner** with defined escalation types, and optional **pygame** visualization. Several advanced pieces from the project narrative exist mainly as **interfaces and stubs** (MCTS search loop, strategic coordinator orchestration, MAPPO, GNN comms, full experiment runner); the map below says where those hooks live and what is actually implemented today.
+APEX (Adaptive Planning EXecution) is a Python research and education codebase for **hierarchical multi-agent planning** in a **grid-based warehouse** simulated with **SimPy** (discrete-event time). The “why” of the split across layers is to **separate** long-horizon *what to do* (strategic task graphs) from *where things are* in the world (domain binding) and from *how to move and react locally* (tactical instructions, path constraints, local disruption handling)—so teams can grow each concern independently and test it in isolation. The repository delivers working simulation types, a concrete **HTN-style** order-to-task decomposer, **UCT MCTS** for optional task-to-agent assignment refinement (`PlanningMode.MCTS_AUGMENTED`), a **domain adapter** that turns abstract tasks into `TaskInstruction` records, a **tactical executor** and **local replanner** with defined escalation types, and optional **pygame** visualization. Remaining narrative gaps are mostly **interfaces and stubs** (`StrategicCoordinator.replan`, full experiment runner); the map below says where those hooks live and what is actually implemented today.
 
 ---
 
@@ -15,7 +15,7 @@ APEX (Adaptive Planning EXecution) is a Python research and education codebase f
 | Term | Definition |
 | --- | --- |
 | **Agent** | A SimPy-driven entity (`apex.agents`) with a type (e.g. picker, carrier, sorter), pose on the grid, battery/payload, and a `run` loop. |
-| **Strategic planning** | Building a `TaskGraph` of tasks and dependencies from orders (main entry: `HTNPlanner.plan_batch`); does not, by itself, assign motion on the grid. |
+| **Strategic planning** | Building a `TaskGraph` of tasks and dependencies from orders (main entry: `HTNPlanner.plan_batch` or `StrategicCoordinator.plan`). **HTN alone** produces tasks with unset `agent_id`; **`PlanningMode.MCTS_AUGMENTED`** fills those slots via MCTS over `AssignmentState` (`task_to_agent`, `unassigned_tasks`). Does not, by itself, assign motion on the grid. |
 | **Tactical** | Short-horizon concerns: per-agent `TaskInstruction` queues, optional space-time path reservation, and local recovery from disruptions (`apex.tactical`). |
 | **Adapter (domain adapter)** | The bridge from planner-oriented abstractions to simulation-grounded resources: `TaskResolver` (IDs, shelves, bays, conveyors) and `DomainTranslator` (task → `TaskInstruction`). |
 | **Task graph** | `TaskGraph`: nodes are `TaskNode` records (task type, order id, deadlines, dependencies) plus explicit edges. Produced by the HTN planner, consumed by higher-level wiring (and demos). |
@@ -24,7 +24,7 @@ APEX (Adaptive Planning EXecution) is a Python research and education codebase f
 | **Pos** | Position as `(row, col)`; see project conventions in the root README. |
 | **HTN (Hierarchical Task Network)** | Here: hand-authored decomposition rules (`HTNMethod` / `BUILT_IN_METHODS`) applied recursively by `HTNPlanner`—not a bundled third-party HTN engine. |
 | **Reservation table** | Space–time set of claimed `(position, time)` cells used so paths can avoid each other; paired with the grid pathfinder in `apex.tactical.pathfinder`. |
-| **Escalation** | `EscalationSignal` from `LocalReplanner` when a disruption cannot be patched locally, intended for `StrategicCoordinator.replan` (stub). |
+| **Escalation** | `EscalationSignal` from `LocalReplanner` when a disruption cannot be patched locally; consumed by `StrategicCoordinator.replan` (optional MAP/Gemini path). |
 | **Blackboard** | `SharedBlackboard` for published `AgentIntention` objects—optional coordination without tight coupling to the executor. |
 
 ---
@@ -44,9 +44,8 @@ flowchart TB
 
   subgraph plan["apex.planner"]
     HTN["HTNPlanner → TaskGraph"]
-    MCTS["MCTSSearch (stub)"]
-    Coord["StrategicCoordinator (stub)"]
-    MARL["MAPPOPolicy / SelfPlayTrainer (stubs)"]
+    MCTS["MCTSSearch (UCT assignment)"]
+    Coord["StrategicCoordinator (partial)"]
   end
 
   subgraph adapt["apex.adapter"]
@@ -67,7 +66,6 @@ flowchart TB
 
   subgraph com["apex.comms"]
     BB["SharedBlackboard"]
-    GNN["GNNComm (stub)"]
   end
 
   Ord --> HTN
@@ -109,7 +107,7 @@ flowchart TB
 
 **Why it exists** To keep **kinematics and work simulation** separate from “planning” code: the same `TaskInstruction` can drive different agent types, and new agent types can be added without changing `HTNPlanner`.
 
-**Key interactions** Receives work indirectly via demos that pull from `TacticalExecutor`; `StrategicCoordinator` is typed against `AgentRegistry` for future assignment logic. Not every demo uses every agent class.
+**Key interactions** Receives work indirectly via demos that pull from `TacticalExecutor`; `StrategicCoordinator` + **`PlanningMode.MCTS_AUGMENTED`** use `AgentRegistry` during MCTS (**`can_perform`** feasibility). Not every demo uses every agent class.
 
 ---
 
@@ -121,7 +119,7 @@ flowchart TB
 
 **Why it exists** So **low-level** failures (blocked path, bad pick) can be **classified and handled** without always rerunning full strategic planning. Separating the executor from `HTNPlanner` matches the intended research architecture (tactical repair vs. strategic replan).
 
-**Key interactions** `DomainTranslator` produces `TaskInstruction` objects. Demos may run executor-driven processes by hand. `StrategicCoordinator.replan` is the intended consumer of `EscalationSignal` (not yet implemented). Pathfinding is used from tests and `__main__` blocks; the bundled end-to-end example does not currently call `SimplePathfinder` (see diagram note).
+**Key interactions** `DomainTranslator` produces `TaskInstruction` objects. Demos may run executor-driven processes by hand. `StrategicCoordinator.replan` consumes `EscalationSignal` when MAP is enabled (`docs/MAP_Gemini_Rollout.md`). Pathfinding is used from tests and `__main__` blocks; the bundled end-to-end example does not currently call `SimplePathfinder` (see diagram note).
 
 **Algorithms (see [Algorithms / non-obvious mechanics](#algorithms--non-obvious-mechanics))** A* + reservation checks; module header names CBS-style *conflict handling*; the code does not implement a full **Conflict-Based Search** tree search as a separate routine.
 
@@ -139,25 +137,25 @@ flowchart TB
 
 ---
 
-### `apex.planner` — task graphs, MCTS, MARL (mixed maturity)
+### `apex.planner` — task graphs and MCTS (mixed maturity)
 
-**What it is** The **strategic** side: `HTNPlanner` and `TaskGraph` are real; `MCTSSearch`, `StrategicCoordinator`, and MARL types are **scaffolding**.
+**What it is** The **strategic** side: `HTNPlanner`, `TaskGraph`, and **`MCTSSearch` + `AssignmentDomain`** are implemented; `StrategicCoordinator` implements **`plan`** for `HTN_ONLY` and **`MCTS_AUGMENTED`**.
 
-**What it does** `HTNPlanner.decompose` matches `BUILT_IN_METHODS` in `htn/methods.py` to expand `fulfill_order` into chains of `TaskType` steps; `plan_batch` unions nodes and edges for each order. `MCTSSearch.search` and `StrategicCoordinator.plan` / `replan` are `NotImplementedError`. `MAPPOPolicy` and `SelfPlayTrainer` are placeholder APIs.
+**What it does** `HTNPlanner.decompose` matches `BUILT_IN_METHODS` in `htn/methods.py` to expand `fulfill_order` into chains of `TaskType` steps; `plan_batch` unions nodes and edges for each order. In **`MCTS_AUGMENTED`**, the coordinator runs HTN first, then **`MCTSSearch.search`**: UCT selection/expansion, random rollouts to complete assignments, and backpropagation of **reward = −(sum of static per-task costs)**. Feasible (task, agent) pairs come from **`AgentRegistry`** and **`Agent.can_perform`**. **`StrategicCoordinator.replan`** may run an optional **MAP / Gemini** pipeline (see `apex/planner/specialists/` and `docs/MAP_Gemini_Rollout.md`) and returns a validated `TaskGraphDelta` when flags allow; otherwise it returns an empty delta.
 
-**Why it exists** The **data structures** (`TaskNode`, `TaskGraph`, `PlanningMode`) stabilize APIs before algorithms are complete. The HTN piece proves the **pipeline** from `OrderBatch` to a graph; MCTS/MARL are hooks for the roadmap in `Project_Description.md`.
+**Why it exists** The **data structures** (`TaskNode`, `TaskGraph`, `PlanningMode`, `AssignmentState`) stabilize APIs; HTN proves **`OrderBatch` → graph**; MCTS adds a **search layer** over who executes which abstract task when multiple feasible allocations exist.
 
-**Key interactions** `OrderBatch` + `WarehouseState` in; `TaskGraph` out. `EscalationSignal` is the intended input to `replan`. MARL and GNN are not wired to training in-tree.
+**Key interactions** `OrderBatch` + `WarehouseState` + `AgentRegistry` in; `TaskGraph` out. `EscalationSignal` + optional current graph snapshot feed `replan` → `TaskGraphDelta`.
 
 ---
 
-### `apex.comms` — shared intentions and future GNN
+### `apex.comms` — shared intentions
 
-**What it is** Lightweight **coordination** (`SharedBlackboard`) plus a `GNNComm` stub for learned messaging.
+**What it is** Lightweight **coordination** via a shared `SharedBlackboard`.
 
-**What it does** `AgentIntention` records coarse plans; the blackboard supports post/read/clear. `GNNComm` raises `NotImplementedError` on `encode` / `message_pass`.
+**What it does** `AgentIntention` records coarse plans; the blackboard supports post/read/clear.
 
-**Why it exists** To experiment with **decentralized** information sharing without entangling it with the executor’s queues; optional `torch` / PyG are isolated in `pyproject.toml` as extras.
+**Why it exists** To experiment with **decentralized** information sharing without entangling it with the executor’s queues.
 
 **Key interactions** None required for the core HTN → translator → executor path; can be used by new agent logic or visualization.
 
@@ -183,7 +181,7 @@ flowchart TB
 
 ### `apex.visualization`, `examples/`, `scripts/`, `viz/`, `config/`, `experiments/`
 
-**What it is** **Entry points and configuration** around the library. `WarehouseVisualizer` (under `apex/visualization/`) provides pygame rendering when `pygame-ce` is installed. `examples/end_to_end_demo.py` is the **canonical** “plan → translate → execute → (optional) visualize” script. `scripts/` holds CLI-style stubs (`run_scenario.py`, `train_marl.py`). Root `config/*.yaml` and `experiments/*.yaml` support scenario and experiment naming even when not every key is read by a single driver yet. The top-level `viz/` package (renderer/dashboard) is separate from `apex.visualization`—check imports before extending.
+**What it is** **Entry points and configuration** around the library. `WarehouseVisualizer` (under `apex/visualization/`) provides pygame rendering when `pygame-ce` is installed. `examples/end_to_end_demo.py` is the **canonical** “plan → translate → execute → (optional) visualize” script. `scripts/` currently contains `run_scenario.py` as a CLI-style stub. Root `config/*.yaml` and `experiments/*.yaml` support scenario and experiment naming even when not every key is read by a single driver yet. The top-level `viz/` package (renderer/dashboard) is separate from `apex.visualization`—check imports before extending.
 
 **Why** Demos and YAML keep the **library** importable from tests and notebooks without a mandatory UI or training stack.
 
@@ -196,9 +194,8 @@ flowchart TB
 | **A* on a grid** | `SimplePathfinder.find_path` uses a binary heap, expands neighbors on the static grid, and treats **time** as one step per move for reservation checks. | Russell & Norvig, *Artificial Intelligence: A Modern Approach* (A* and heuristics); [SimPy](https://simpy.readthedocs.io/) for the simulation clock used elsewhere. |
 | **Heuristic** | **Manhattan distance** to the goal (admissible on a 4-connected grid with unit cost). | Standard admissible heuristic for grid MAPF with Manhattan moves. |
 | **Reservation table** | Agents (or tests) pre-register `(position, time)`; A* **skips** moves that would enter a reserved slot. This implements **deconfliction by forbidden space–time** rather than a full multi-agent **CBS** constraint tree. | Multi-agent pathfinding background: Shomon & Felner, “Conflict-based search for optimal multi-agent pathfinding” *Artificial Intelligence* (2015) explains **full** CBS; this repo’s **mechanism** is closer to a **fixed reservation** + single-agent replan (variant / simplified). |
-| **MCTS (planned)** | `MCTSSearch` documents UCT-style selection and backprop; methods are not implemented. | Kocsis & Szepesvári, “Bandit based Monte-Carlo planning” (2006) for **UCT**; [official draft PDF](https://ccg.szu.edu.cn/papers/Teaching/Material/BanditBasedMonte-CarloPlanning.pdf) is widely cited. |
+| **MCTS (assignment)** | `MCTSSearch` runs **UCT** over partial assignments: **`AssignmentDomain`** supplies legal `(task_id, agent_id)` moves (compatibility via `can_perform`); rollouts complete remaining tasks uniformly at random; terminal **value** uses **`default_assignment_cost`** (tabular `TaskType` costs, reward = −cost). Best complete state seen across iterations is returned. Extend by swapping `terminal_reward` or enriching costs. | Kocsis & Szepesvári, “Bandit based Monte-Carlo planning” (2006) for **UCT**; [official draft PDF](https://ccg.szu.edu.cn/papers/Teaching/Material/BanditBasedMonte-CarloPlanning.pdf) is widely cited. |
 | **HTN** | **Project-specific** methods in `BUILT_IN_METHODS`; the planner does not call an external HTN library. | HTN planning survey: Nau, *HTN planning* / Ghallab et al., *Automated Planning*; treat this codebase as a **toy** HTN for the simulation. |
-| **MAPPO** | Interface only. | “The Surprising Effectiveness of MAPPO in Cooperative Multi-Agent Games” (Yu et al., 2021) for algorithm context. |
 
 ---
 
@@ -219,12 +216,19 @@ flowchart TB
 - `python -m apex.tactical.pathfinder` / pytest tactical tests: **reservation** + A* on synthetic grids.
 - `python -m apex.planner.htn.planner`: builds a **TaskGraph** from a toy batch.
 - `python -m apex.adapter.resolver` / translator: **resolution** and translation smoke tests.
+- `pytest tests/test_mcts.py` / `tests/test_strategic_planner.py`: **MCTS** assignment and **`MCTS_AUGMENTED`** coordinator path.
 
-### Flow 3 — Intended escalation (partially implemented)
+### Flow 3 — Strategic coordinator with MCTS (`PlanningMode.MCTS_AUGMENTED`)
+
+1. Build `WarehouseState`, register agents on `AgentRegistry` (capabilities must **`can_perform`** the HTN `TaskType` steps).
+2. `StrategicCoordinator(PlanningMode.MCTS_AUGMENTED, warehouse_state, registry).plan(OrderBatch)` → HTN **`plan_batch`** then **`_apply_mcts_assignments`**.
+3. **`assignment_state_from_graph`** builds the root `AssignmentState`; **`AssignmentDomain`** lists legal `(task_id, agent_id)` moves; **`MCTSSearch`** returns the best complete assignment seen; **`TaskNode.agent_id`** fields are patched on the graph.
+
+### Flow 4 — Intended escalation (partially implemented)
 
 1. A runtime `Disruption` is passed to `LocalReplanner.handle`.
 2. If local patch succeeds → revised `TaskInstruction` list; if not → `EscalationSignal`.
-3. *Planned:* `StrategicCoordinator.replan(escalation)` → `TaskGraphDelta` (currently not implemented).
+3. *Partial:* `StrategicCoordinator.replan(escalation, current_graph=...)` → `TaskGraphDelta` (validated MAP output when `APEX_MAP_*` / `GEMINI_API_KEY` configured; otherwise empty delta).
 
 ---
 
@@ -239,7 +243,7 @@ flowchart TB
 | Add a new `action_type` for agents | `DomainTranslator.translate` and the agent/executor side that interprets it (e.g. demo driver) |
 | Adjust tactical queues or instruction schema | `apex/tactical/executor.py` |
 | Tighten multi-agent routing or swap algorithms | `apex/tactical/pathfinder.py` (and then wire it into whichever driver should call it) |
-| Define strategic replanning or MCTS/MARL | `apex/planner/coordinator.py`, `mcts/search.py`, `marl/` (expect stubs until implemented) |
+| Extend assignment objective or strategic replanning | `apex/planner/mcts/domain.py` (costs, extra feasibility), `mcts/search.py` (`terminal_reward`), `coordinator.py` (`replan`, `TaskGraphDelta`) |
 | Add live metrics or experiment batches | `apex/evaluation/metrics.py`, then flesh out `ExperimentRunner` |
 | Optional pygame UI | `apex/visualization/viewer.py` and optional group `pip install -e ".[viz]"` |
 
@@ -247,9 +251,9 @@ flowchart TB
 
 ## Out of scope / known limits
 
-- **StrategicCoordinator**, **MCTSSearch.search**, **ExperimentRunner** episode driver, **GNNComm**, and **MAPPO** training are **stubs** (`NotImplementedError` on core methods where applicable). Narrative in `Project_Description.md` describes a **target**; this guide reflects the **code as checked in**.
+- **`StrategicCoordinator.replan`** supports an optional **MAP/Gemini** path with validated `TaskGraphDelta` output; **ExperimentRunner** episode driver remains a stub. **`MCTSSearch.search`** and **`PlanningMode.MCTS_AUGMENTED`** are **implemented**. Narrative in `Project_Description.md` still describes several **targets** (e.g. full utility over proximity/load/congestion); this guide reflects the **code as checked in**.
 - **`apex.tactical.pathfinder` module** docstring says “CBS”; the implementation is **A* + `ReservationTable`**, not a full **CBS** high/low search loop—see [Algorithms](#algorithms--non-obvious-mechanics).
-- **HTN methods** in code use two entries with the same `task="fulfill_order"`; the planner’s `decompose` **returns on the first matching method**, so the second method is **unreachable** until selection logic is added (appears to be a TODO / design follow-up; verify if you extend planning).
+- **HTN method selection** is priority- and applicability-based (`_select_method`): when multiple methods match the same task, the highest-priority applicable method is chosen (for example, direct-bay routing is selected when adjacency checks pass).
 - **`config/`** and **`experiments/`** files exist; not every key may be read by a single top-level script—**confirm** the driver you use before assuming a parameter is live.
 - **Tests** in `tests/` are a **subset** of what the Implementation Plan once listed; run `pytest` for current behavior.
 
@@ -260,8 +264,7 @@ flowchart TB
 1. S. Russell, P. Norvig, *Artificial Intelligence: A Modern Approach* (A* search, heuristics).  
 2. D. Shomon, A. Felner, R. Sturtevant, C. Surynek, *Conflict-based search for optimal multi-agent pathfinding*, Artificial Intelligence, 2015. [DOI: 10.1016/j.artint.2014.11.006](https://doi.org/10.1016/j.artint.2014.11.006) (full **CBS**; contrast with this repo’s reservation + A*).  
 3. L. Kocsis, C. Szepesvári, *Bandit based Monte-Carlo planning*, ECML 2006 (**UCT** for MCTS).  
-4. C. Yu et al., *The Surprising Effectiveness of MAPPO in Cooperative Multi-Agent Games*, NeurIPS 2021.  
-5. [SimPy documentation](https://simpy.readthedocs.io/) — discrete-event processes used across agents and events.  
-6. Pydantic v2: [Pydantic documentation](https://docs.pydantic.dev/) (data models in simulation, planning, and tactical modules).
+4. [SimPy documentation](https://simpy.readthedocs.io/) — discrete-event processes used across agents and events.  
+5. Pydantic v2: [Pydantic documentation](https://docs.pydantic.dev/) (data models in simulation, planning, and tactical modules).
 
 ---

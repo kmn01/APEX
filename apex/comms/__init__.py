@@ -1,1 +1,1 @@
-"""Inter-agent communication: blackboard and GNN stub."""
+"""Inter-agent communication via shared blackboard primitives."""

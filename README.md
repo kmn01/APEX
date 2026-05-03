@@ -8,10 +8,10 @@
 | --- | --- | --- |
 | Simulation | Grid, warehouse state, orders, stochastic events | `apex/simulation/` |
 | Agents | Picker, carrier, sorter bots; fleet registry | `apex/agents/` |
-| Tactical | CBS-style pathfinding, task executor, local replanner | `apex/tactical/` |
+| Tactical | A* + reservation-table pathfinding, task executor, local replanner | `apex/tactical/` |
 | Adapter | SKU/bay/conveyor resolution and task translation | `apex/adapter/` |
-| Planner | HTN operators/methods/planner, MCTS assignment, MARL stubs | `apex/planner/` |
-| Comms | Shared blackboard; GNN comms stub (Phase 3) | `apex/comms/` |
+| Planner | HTN operators/methods/planner; **UCT MCTS** assignment (`PlanningMode.MCTS_AUGMENTED`; feasibility + static costs) | `apex/planner/` |
+| Comms | Shared blackboard for agent intentions | `apex/comms/` |
 | Evaluation | Metrics collector and scenario runner | `apex/evaluation/` |
 
 **Conventions**
@@ -20,7 +20,7 @@
 - The **SimPy environment** is always passed explicitly (no global `env`).
 - **`WarehouseState`** is the single shared snapshot passed into planners and processes.
 - **Data** uses **Pydantic v2** `BaseModel`; **algorithms** use `ABC` or `dataclass` as appropriate.
-- Optional **pygame-ce** (visualization) and **torch / torch-geometric** (GNN) are optional extras, not required for core imports.
+- Optional **pygame-ce** (visualization) is not required for core imports.
 
 ## Install
 
@@ -34,8 +34,27 @@ source .venv/bin/activate
 pip install -e ".[dev,viz]"
 ```
 
-Optional groups: `viz` (pygame-ce), `gnn` (torch stack).
+Optional groups: `viz` (pygame-ce), `llm` (Gemini / MAP-style planner).
 
+### MAP-style Gemini planner (optional)
+
+Install LLM extras and set your API key in `.env` (see [.env.example](.env.example)):
+
+```bash
+pip install -e ".[dev,llm]"
+# .env
+GEMINI_API_KEY=...
+# GEMINI_MODEL=gemini-2.0-flash   # optional
+
+# Feature flags (namespaced)
+APEX_MAP_ENABLED=true
+APEX_MAP_APPLY_PLAN=false        # set true to merge MAP-refined graphs after HTN/MCTS
+APEX_MAP_APPLY_REPLAN=false      # set true to return validated TaskGraphDelta from MAP
+APEX_MAP_REPLAN_SHADOW=false     # if true: run MAP on replan but always return empty delta (log only)
+APEX_MAP_PLAN_SHADOW=false       # if true: run MAP on plan but keep baseline graph
+```
+
+Flow: `StrategicCoordinator` runs HTN (and MCTS when enabled), then optionally runs a **MAP** pipeline (decomposition → prediction → monitoring → coordination) via `MapOrchestrator` and `GeminiJsonClient`. Invalid or unparsable LLM output **falls back** to the deterministic baseline. See [docs/MAP_Gemini_Rollout.md](docs/MAP_Gemini_Rollout.md) for rollout stages and guardrails.
 
 ## Test a module
 

@@ -4,15 +4,22 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.pytype/
+.pyre/
+__pypackages__/
 
 # Virtual environments
 .venv/
 venv/
 env/
+.envrc
+.direnv/
+.python-version
 
 # Distribution / packaging
 build/
 dist/
+site/
 *.egg
 *.egg-info/
 .eggs/
@@ -39,6 +46,7 @@ coverage.xml
 .ruff_cache/
 .dmypy.json
 dmypy.json
+.cache/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -54,9 +62,13 @@ Thumbs.db
 
 # Editors
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
+
+# Logs
+*.log
 
 # Optional: experiment / ML run artifacts (uncomment if you use these)
 # wandb/

@@ -80,7 +80,7 @@ class SorterBot(Agent):
 
     def can_perform(self, task_type: str) -> bool:
         """Sorters specialize in sort/stage task families."""
-        sort_tasks = ["SORT", "STAGE", "DIVERT", "SCAN_CONVEYOR"]
+        sort_tasks = ["SORT", "STAGE", "DIVERT", "SCAN_CONVEYOR", "DISPATCH"]
         return task_type.upper() in sort_tasks
 
     def _format_moving_line(
