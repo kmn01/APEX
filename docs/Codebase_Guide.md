@@ -1,6 +1,6 @@
 # APEX code map
 
-This is a map of the repository: what the system is, how major pieces relate, and why those boundaries exist. For product vision and research framing, see [Project_Description.md](Project_Description.md) and the root [README.md](../README.md). For a milestone-style module plan, see [Implementation_Plan.md](Implementation_Plan.md).
+This is a map of the repository: what the system is, how major pieces relate, and why those boundaries exist. For product vision and research framing, see [Project_Description.md](Project_Description.md). For **install, CLI usage, dashboards, and how to reproduce runs and tests**, see the root [README.md](../README.md). For a milestone-style module plan, see [Implementation_Plan.md](Implementation_Plan.md).
 
 ---
 
@@ -207,7 +207,7 @@ flowchart TB
 
 ### `apex.visualization`, `examples/`, `scripts/`, `viz/`, `config/`, `experiments/`
 
-**What it is** **Entry points and configuration** around the library. `WarehouseVisualizer` (under `apex/visualization/`) provides pygame rendering when `pygame-ce` is installed; it accepts optional **`ScenarioSpec`** or **`scenario_hint`** mappings for HUD context. **`VideoRecorder`** (**imageio**/ffmpeg) appends **`frame_rgb()`** frames for MP4 output. `examples/end_to_end_demo.py` is the **canonical** introductory “plan → translate → execute → (optional) visualize” script (**`argparse`** flags: **`--record-video`**, **`--video-output`**, **`--video-fps`**). `scripts/run_scenario.py` runs **`EpisodeDriver`** from catalog **`--scenario`** or **`--yaml`**, merges CLI overrides into **`RunConfig`**, optional **`--record-video`**, and writes **`write_run_directory`** artifacts. Root `config/*.yaml` and `experiments/*.yaml` may still duplicate naming from **`apex/scenarios`**—confirm which driver reads a given file. The top-level `viz/` folder (`dashboard.py` stub only) is separate from `apex.visualization`—check imports before extending.
+**What it is** **Entry points and configuration** around the library. `WarehouseVisualizer` (under `apex/visualization/`) provides pygame rendering when `pygame-ce` is installed; it accepts optional **`ScenarioSpec`** or **`scenario_hint`** mappings for HUD context. **`VideoRecorder`** (**imageio**/ffmpeg) appends **`frame_rgb()`** frames for MP4 output. `examples/end_to_end_demo.py` is the **canonical** introductory “plan → translate → execute → (optional) visualize” script (**`argparse`** flags: **`--record-video`**, **`--video-output`**, **`--video-fps`**). `scripts/run_scenario.py` runs **`EpisodeDriver`** from catalog **`--scenario`** or **`--yaml`**, merges CLI overrides into **`RunConfig`**, optional **`--record-video`**, and writes **`write_run_directory`** artifacts. Root `config/*.yaml` and `experiments/*.yaml` may still duplicate naming from **`apex/scenarios`**—confirm which driver reads a given file. The top-level **`viz/`** folder holds **`dashboard.py`**, a small **FastAPI** app (install **`[dashboard]`**) that lists run directories and renders run digests from manifests—separate from **`apex.visualization`**; check imports before extending either surface.
 
 **Why** Demos and YAML keep the **library** importable from tests and notebooks without a mandatory UI or training stack.
 

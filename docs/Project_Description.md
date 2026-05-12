@@ -1,7 +1,7 @@
-# APEX: Adaptive Planning and Execution System for Multi-Agent Strategic Orchestration
+# APEX: Adaptive Planning EXecution for multi-agent warehouse orchestration
 
 ## Overview
-APEX (Adaptive Planning and Execution System) is a hierarchical multi-agent planning system for warehouse logistics research. It coordinates a fleet of heterogeneous robot agents (picker, carrier, sorter) across a strategic planning layer and a tactical execution layer, with a domain adapter translating abstract tasks into concrete warehouse instructions (shelf IDs, conveyor segments, loading bays).
+APEX (**Adaptive Planning EXecution**) is a hierarchical multi-agent planning system for warehouse logistics research. It coordinates a fleet of heterogeneous robot agents (picker, carrier, sorter) across a strategic planning layer and a tactical execution layer, with a domain adapter translating abstract tasks into concrete warehouse instructions (shelf IDs, conveyor segments, loading bays).
 
 The system is designed as a practical research substrate for symbolic planning, search-augmented assignment, and disruption recovery in dynamic environments.
 
@@ -28,6 +28,8 @@ APEX combines unit tests with a **typed episodic harness** built on **`ScenarioS
 **`ExperimentRunner`** (`apex/evaluation/runner.py`) implements **`run_episode`** and **`run_sweep`** by delegating to **`EpisodeDriver`**. **`scripts/run_scenario.py`** persists runs (**`apex/evaluation/io.py`**: JSON/JSONL artifacts) from catalog ids or **`--yaml`** paths; **`examples/end_to_end_demo.py`** remains the lighter HTN→adapter→executor walkthrough with optional **`--record-video`**.
 
 Current reliability hooks include fallback counters and plan-run hashing support (`MapReliabilityMetrics`) for pass^k-style consistency tracking; sweep automation beyond sequential **`run_sweep`** is optional future work.
+
+**Reproducibility (quick reference):** for offline invariant checks, set `APEX_MAP_ENABLED=false`, run `pip install -e ".[dev]"`, run `pytest`, and use the YAML suite commands in [Scenario_Test_Suite.md](Scenario_Test_Suite.md) and the root [README.md](../README.md).
 
 ## Implementation Snapshot
 - Strategic: `apex/planner/htn/`, `apex/planner/mcts/`, `apex/planner/coordinator.py`, `apex/planner/specialists/`

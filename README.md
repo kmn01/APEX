@@ -1,19 +1,19 @@
 # APEX
 
-**APEX** (Adaptive Planning EXecution) is a hierarchical multi-agent planning system for a grid-based warehouse simulation. The strategic layer takes incoming order batches and breaks them into a structured set of tasks (what needs to happen, in what order). A domain adapter then turns those abstract tasks into concrete locations the simulation understands—shelves, conveyor segments, loading bays, and similar IDs—so “pick in zone C” becomes something the world can act on. The tactical layer plans routes and motion for different agent types (e.g. pickers, carriers, sorters) using conflict-aware methods so robots don’t get in each other’s way, and it can adjust locally when the floor changes or something goes wrong. SimPy drives the whole thing by stepping time forward in a discrete-event way so the warehouse and agents evolve together.
+**APEX (Adaptive Planning and Execution System)** is a **hierarchical multi-agent planning system** for warehouse logistics simulation. The system coordinates a fleet of heterogeneous robot agents, like pickers, carriers, and sorters, across a two-layer planning architecture: a strategic layer that decomposes order batches into structured task graphs using Hierarchical Task Networks (HTN) and Monte Carlo Tree Search (MCTS), and a tactical layer that executes those tasks using Conflict-Based Search (CBS) pathfinding with real-time disruption recovery. A domain adapter bridges the two layers by translating abstract task types into concrete warehouse instructions grounded in physical shelf IDs, conveyor segments, and loading bays. APEX further integrates Google Gemini as the large language model (LLM) backbone via a Modular Agentic Planning (MAP) pipeline, which refines HTN-generated plans using language-driven reasoning while guaranteeing deterministic fallback. We evaluate the system across seven scenarios covering normal operation, multi-agent coordination, staggered order waves, and scripted disruptions including shelf blocks, order injection, and agent failure. APEX achieves 100\% task completion rate across all evaluated scenarios with near zero collisions in coordinated runs, providing concrete evidence of end-to-end correctness and adaptability.
 
-## Architecture
+## Project overview
 
-| Layer | Role | Key modules |
+| Concern | Role | Primary location |
 | --- | --- | --- |
-| Simulation | Grid, warehouse state, orders, stochastic events | `apex/simulation/` |
+| Simulation | Grid, warehouse state, orders, scripted or stochastic events | `apex/simulation/` |
 | Agents | Picker, carrier, sorter bots; fleet registry | `apex/agents/` |
-| Tactical | CBS (+ constrained A*) for batched **`MOVE_TO`**, reservation-table A* fallback, executor, replanner | `apex/tactical/` |
-| Adapter | SKU/bay/conveyor resolution and task translation | `apex/adapter/` |
-| Planner | HTN operators/methods/planner; **UCT MCTS** assignment (`PlanningMode.MCTS_AUGMENTED`; feasibility + static costs) | `apex/planner/` |
+| Strategic planning | HTN decomposition, MCTS assignment, coordinator, MAP / Google Gemini specialists | `apex/planner/` |
+| Adapter | SKU / layout resolution; task → instructions | `apex/adapter/` |
+| Tactical | Executor, CBS + constrained A*, reservation fallback, replanner | `apex/tactical/` |
+| Evaluation | Episode driver, metrics, run artifacts, experiment sweeps | `apex/evaluation/` |
+| Scenarios | Typed `ScenarioSpec`, YAML + catalog builders | `apex/scenarios/` |
 | Comms | Shared blackboard for agent intentions | `apex/comms/` |
-| Evaluation | Metrics, `EpisodeDriver`, `ExperimentRunner`, scenario I/O | `apex/evaluation/` |
-| Scenarios | Typed `ScenarioSpec`, catalog/YAML loaders, warehouse builder | `apex/scenarios/` |
 
 **Conventions**
 
@@ -21,108 +21,137 @@
 - The **SimPy environment** is always passed explicitly (no global `env`).
 - **`WarehouseState`** is the single shared snapshot passed into planners and processes.
 - **Data** uses **Pydantic v2** `BaseModel`; **algorithms** use `ABC` or `dataclass` as appropriate.
-- Optional **pygame-ce** (visualization) is not required for core imports.
 
-## Install
+## Requirements
+
+- **Python 3.11+** (see `pyproject.toml`).
+
+## Setup
 
 ```bash
-# Clone & enter repo
 cd APEX
-# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate
-# Install with development + visualization (pygame + imageio MP4 recording)
-pip install -e ".[dev,viz]"
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+
+# Core library, tests, YAML scenarios, and Google GenAI client for MAP / Gemini
+pip install -e ".[dev,llm]"
 ```
 
-Optional groups: `viz` (pygame-ce, imageio / ffmpeg for recording), `eval` (matplotlib, PyYAML for analysis-style extras), `llm` (Gemini / MAP-style planner), `dashboard` (FastAPI + uvicorn + Jinja for a local runs browser).
+The **`[llm]`** dependency group in `pyproject.toml` pins **`google-genai`** and **`python-dotenv`** used by `apex/planner/specialists/`; it is part of the default install command above, not a separate add-on.
 
-### Runs dashboard (optional)
+**Visualizations**:
 
-Browse folders produced by `scripts/run_scenario.py --output …` (each run should contain `metrics.json`, `events.jsonl`, and `run_manifest.json`; optional `videos/*.mp4`). Opening a run shows a structured **what was simulated** digest (grid, agents, orders, disruptions), **grouped metrics** with short definitions, a merged **timeline** of key events, and **consistency checks** against raw event counts. Raw scenario JSON and CLI flags stay under collapsible sections.
+| Name | Purpose |
+| --- | --- |
+| `viz` | pygame-ce, imageio (+ ffmpeg) for MP4 from `examples/end_to_end_demo.py` and `--record-video` on the scenario CLI |
+| `eval` | matplotlib, PyYAML for `scripts/plot_benchmarks.py` and analysis-style workflows |
+| `dashboard` | FastAPI, uvicorn, Jinja2 for the local runs browser under `viz/` |
+
+Copy [`.env.example`](.env.example) to `.env` and set **`GEMINI_API_KEY`** (and any `APEX_*` overrides) for live Gemini calls; see [docs/MAP_Gemini_Rollout.md](docs/MAP_Gemini_Rollout.md).
+
+## Usage
+
+### Evaluation CLI
+
+[`scripts/run_scenario.py`](scripts/run_scenario.py) loads a **`ScenarioSpec`** from the **catalog** or a **YAML** file, runs **`EpisodeDriver`**, prints **`EpisodeMetrics`** JSON to stdout, and writes a run directory.
+
+```bash
+# Catalog scenario (see table below)
+python scripts/run_scenario.py --scenario two_agents_crossing --output runs/demo
+
+# YAML scenario (suite lives under apex/scenarios/data/suite/)
+python scripts/run_scenario.py \
+  --yaml apex/scenarios/data/suite/baseline_single_agent.yaml \
+  --output runs/baseline
+
+# Overrides (see --help for full list)
+python scripts/run_scenario.py --scenario order_batch_queue --output runs/mcts \
+  --planning-mode MCTS_AUGMENTED --coordination cbs --verbose
+```
+
+**Catalog scenario IDs** (`--scenario`): `single_order_single_agent`, `two_agents_crossing`, `crossing_agents` (alias), `order_batch_queue`, `shelf_block_recovery`, `injected_priority_order`.
+
+**Common flags** (see `python scripts/run_scenario.py --help` for the full list):
+
+- `--coordination` — `cbs` (default in most builders) or `greedy_uncoordinated`
+- `--planning-mode` — `HTN_ONLY` or `MCTS_AUGMENTED`
+- `--no-replan` — disable strategic replan on escalation
+- `--verbose` — extra console logging (default runs are quiet)
+- `--record-video` — MP4 under `<output>/videos` (requires `pip install -e ".[viz]"`)
+
+**Run directory artifacts** (under `--output`): `metrics.json`, `events.jsonl`, `run_manifest.json` (pinned scenario, CLI snapshot, environment metadata); optional `videos/*.mp4`.
+
+### Runs dashboard
+
+Browse folders produced by the CLI. Each run should contain at least `metrics.json`, `events.jsonl`, and `run_manifest.json`.
 
 ```bash
 pip install -e ".[dashboard]"
 python viz/dashboard.py --runs runs
-# Open http://127.0.0.1:8765/ — the run list refreshes every few seconds.
+# Open the printed URL (default bind http://127.0.0.1:8765/)
 ```
 
-### MAP-style Gemini planner (optional)
+### Interactive end-to-end demo (HTN → adapter → executor → pygame)
 
-Install LLM extras and set your API key in `.env` (see [.env.example](.env.example)):
-
-```bash
-pip install -e ".[dev,llm]"
-# .env
-GEMINI_API_KEY=...
-# GEMINI_MODEL=gemini-2.0-flash   # optional
-
-# MAP defaults to on in settings; override only if needed, for example:
-# APEX_MAP_ENABLED=false
-```
-
-Flow: `StrategicCoordinator` runs HTN (and MCTS when enabled), then optionally runs a **MAP** pipeline (decomposition → prediction → monitoring → coordination) via `MapOrchestrator` and `GeminiJsonClient`. Invalid or unparsable LLM output **falls back** to the deterministic baseline. See [docs/MAP_Gemini_Rollout.md](docs/MAP_Gemini_Rollout.md) for rollout stages and guardrails.
-
-## Test a module
-
-From the repo root (with the package on `PYTHONPATH`, or after `pip install -e .`):
+Lighter than **`EpisodeDriver`**: one picker queue, no CBS batching path. Good for understanding the pipeline.
 
 ```bash
-python -m apex.simulation.grid
-python -m apex.simulation.warehouse
-```
-## Test Individual Modules
-
-```bash
-# M3: Tactical Executor
-python -m apex.tactical.executor
-
-# M3: Local Replanner
-python -m apex.tactical.replanner
-
-# M4: Domain Adapter
-python -m apex.adapter.translator
-
-# M5: Strategic Planner
-python -m apex.planner.htn.planner
-```
-## Run End-to-End Demo with Visualization
-
-```bash
+pip install -e ".[viz]"   # only if you want the window or --record-video
 python examples/end_to_end_demo.py
-# Optional: capture MP4 (requires pip install -e ".[viz]")
 python examples/end_to_end_demo.py --record-video --video-output artifacts/videos
 ```
 
-This will:
-- Create a 20×20 warehouse grid
-- Plan 2 orders into a task graph (node count depends on HTN decomposition)
-- Translate a small abstract-task slice into concrete instructions
-- Display live visualization with 2 agents when pygame is installed
+### MAP / Google Gemini
 
-## Run catalog or YAML scenarios (evaluation CLI)
+Strategic planning runs the **MAP** pipeline (Gemini-backed specialists) by default when a client can be initialized; set **`GEMINI_API_KEY`** in `.env` (see [`.env.example`](.env.example)). Unset keys, failed init, or invalid model output **fall back** to the deterministic HTN/MCTS baseline. 
 
-Uses **`EpisodeDriver`** + **`ScenarioSpec`** (deterministic horizons, optional CBS coordination, scripted disruptions, **`StrategicCoordinator`** replan paths). Writes metrics and events under `--output`.
+### Plotting metrics
 
 ```bash
-pip install -e ".[dev,viz]"   # viz only if using --record-video
-python scripts/run_scenario.py --scenario two_agents_crossing --output runs/demo
-python scripts/run_scenario.py --yaml apex/scenarios/data/single_order.yaml --output runs/demo2 \
-  --planning-mode MCTS_AUGMENTED --coordination cbs --record-video
+pip install -e ".[eval]"
+python scripts/plot_benchmarks.py --input runs/sweep_folder --output runs/summary.png
 ```
 
-See [docs/Scenario_Test_Suite.md](docs/Scenario_Test_Suite.md) for the full YAML suite (`apex/scenarios/data/suite/`), expected metrics, and copy-paste commands.
+## Reproducing core functionality and results
 
----
+1. **Tests**
 
-## Tests
+   ```bash
+   pytest
+   # or
+   pytest tests/ -v
+   ```
 
-```bash
-pytest
+2. **Scenario suite**  
+   After `pip install -e ".[dev,llm]"`, run representative YAML cases and inspect `metrics.json` / `events.jsonl`:
 
-or
+   ```bash
+   export APEX_MAP_ENABLED=false   # recommended for invariant checks
+   python scripts/run_scenario.py --yaml apex/scenarios/data/suite/baseline_single_agent.yaml --output runs/baseline_single_agent
+   python scripts/run_scenario.py --yaml apex/scenarios/data/suite/two_agents_crossing.yaml --output runs/two_agents_crossing
+   ```
 
-pytest tests/ -v
-```
+   [docs/Scenario_Test_Suite.md](docs/Scenario_Test_Suite.md).
 
-(Add tests under `tests/` as behavior is implemented.)
+3. **Align YAML with catalog after editing builders**
+
+   ```bash
+   python scripts/export_catalog_scenario_to_yaml.py \
+     --scenario single_order_single_agent \
+     --output apex/scenarios/data/suite/baseline_single_agent.yaml
+   ```
+
+4. **Module entrypoints** (quick smoke without pytest)
+
+   ```bash
+   python -m apex.simulation.grid
+   python -m apex.simulation.warehouse
+   python -m apex.tactical.executor
+   python -m apex.tactical.replanner
+   python -m apex.adapter.translator
+   python -m apex.planner.htn.planner
+   ```
+
+## Packaging
+
+Project name and Python requirement are declared in `pyproject.toml` (`name = "apex"`, `requires-python = ">=3.11"`).

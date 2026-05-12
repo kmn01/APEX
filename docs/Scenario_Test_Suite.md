@@ -4,6 +4,7 @@ This document describes the YAML scenarios under [`apex/scenarios/data/suite/`](
 
 ## Prerequisites
 
+- Python **3.11+** (matches `requires-python` in `pyproject.toml`).
 - From the repository root, install the package with dev dependencies (PyYAML is required for `--yaml`):
 
   ```bash
