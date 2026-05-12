@@ -70,6 +70,7 @@ def node_to_abstract(node: TaskNode, orders_by_id: dict[str, Order]) -> Abstract
         order_id=oid,
         priority=0,
         deadline=float(node.deadline or 0.0),
+        task_node_id=node.id,
     )
 
 
@@ -81,6 +82,8 @@ def graph_to_instructions(
     translator: DomainTranslator,
     *,
     use_mcts_agent_ids: bool = False,
+    plan_run_id: str | None = None,
+    graph_version_id: str | None = None,
 ) -> list[TaskInstruction]:
     """Flatten HTN graph to executable instructions in cross-order parallel-friendly order."""
     ordered = topological_nodes(graph)
@@ -101,5 +104,7 @@ def graph_to_instructions(
             node.order_id or "", agent_ids[0] if agent_ids else "picker-0"
         )
         abstract = node_to_abstract(node, orders_by_id)
+        abstract.plan_run_id = plan_run_id
+        abstract.graph_version_id = graph_version_id
         instrs.extend(translator.translate(abstract, warehouse, agent_id))
     return instrs

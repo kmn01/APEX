@@ -119,14 +119,6 @@ def create_app(*, runs_root: Path) -> Any:
         scenario_digest = build_scenario_digest(scen_dict)
         scenario_raw, scenario_raw_truncated = cap_raw_scenario_json(scen_dict)
 
-        cli = None
-        cli_json = ""
-        if isinstance(m.get("extra"), dict):
-            ex = m["extra"]
-            if isinstance(ex.get("cli"), dict):
-                cli = ex["cli"]
-                cli_json = json.dumps(cli, indent=2)
-
         metrics_obj: EpisodeMetrics | None = None
         metric_groups: list[dict[str, Any]] | None = None
         if (run_dir / "metrics.json").is_file():
@@ -164,8 +156,6 @@ def create_app(*, runs_root: Path) -> Any:
                 "scenario_digest": scenario_digest,
                 "scenario_raw": scenario_raw,
                 "scenario_raw_truncated": scenario_raw_truncated,
-                "cli": cli,
-                "cli_json": cli_json,
                 "metric_groups": metric_groups,
                 "event_summary": event_summary,
                 "tail_json": tail_json,

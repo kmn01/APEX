@@ -8,6 +8,7 @@ import io
 from pathlib import Path
 from collections import defaultdict
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import numpy as np
 import simpy
@@ -106,29 +107,62 @@ def assign_instruction_stream(
             if len(batch) >= 2:
                 executor.assign_batch(batch, agent_positions=positions)
                 for _ in batch:
+                    instruction_id = _.instruction_id or f"instr_{uuid4().hex}"
+                    _.instruction_id = instruction_id
                     collector.record_event(
-                        "task_instruction_scheduled",
+                        "execution.instruction_scheduled",
                         {
+                            "instruction_id": instruction_id,
+                            "task_node_id": _.task_node_id,
+                            "plan_run_id": _.plan_run_id,
+                            "graph_version_id": _.graph_version_id,
                             "agent_id": _.agent_id,
                             "action_type": "MOVE_TO",
                             "order_id": _.order_id,
                             "time": executor.env.now,
+                            "resolver_trace": _.resolver_trace,
                         },
                     )
+                    if _.resolver_trace:
+                        collector.record_event(
+                            "mapping.task_resolved",
+                            {
+                                "instruction_id": instruction_id,
+                                "task_node_id": _.task_node_id,
+                                "order_id": _.order_id,
+                                **_.resolver_trace,
+                            },
+                        )
                 i = j
                 continue
             if len(batch) == 1:
                 b0 = batch[0]
+                b0.instruction_id = b0.instruction_id or f"instr_{uuid4().hex}"
                 executor.assign(b0)
                 collector.record_event(
-                    "task_instruction_scheduled",
+                    "execution.instruction_scheduled",
                     {
+                        "instruction_id": b0.instruction_id,
+                        "task_node_id": b0.task_node_id,
+                        "plan_run_id": b0.plan_run_id,
+                        "graph_version_id": b0.graph_version_id,
                         "agent_id": b0.agent_id,
                         "action_type": b0.action_type,
                         "order_id": b0.order_id,
                         "time": executor.env.now,
+                        "resolver_trace": b0.resolver_trace,
                     },
                 )
+                if b0.resolver_trace:
+                    collector.record_event(
+                        "mapping.task_resolved",
+                        {
+                            "instruction_id": b0.instruction_id,
+                            "task_node_id": b0.task_node_id,
+                            "order_id": b0.order_id,
+                            **b0.resolver_trace,
+                        },
+                    )
                 i = j
                 continue
 
@@ -136,15 +170,31 @@ def assign_instruction_stream(
             executor.assign(ins)
         else:
             executor.assign(ins)
+        ins.instruction_id = ins.instruction_id or f"instr_{uuid4().hex}"
         collector.record_event(
-            "task_instruction_scheduled",
+            "execution.instruction_scheduled",
             {
+                "instruction_id": ins.instruction_id,
+                "task_node_id": ins.task_node_id,
+                "plan_run_id": ins.plan_run_id,
+                "graph_version_id": ins.graph_version_id,
                 "agent_id": ins.agent_id,
                 "action_type": ins.action_type,
                 "order_id": ins.order_id,
                 "time": executor.env.now,
+                "resolver_trace": ins.resolver_trace,
             },
         )
+        if ins.resolver_trace:
+            collector.record_event(
+                "mapping.task_resolved",
+                {
+                    "instruction_id": ins.instruction_id,
+                    "task_node_id": ins.task_node_id,
+                    "order_id": ins.order_id,
+                    **ins.resolver_trace,
+                },
+            )
         i += 1
 
 
@@ -168,6 +218,10 @@ class EpisodeDriver:
         self._agent_loops_started = False
         self._plan_dirty = False
         self._last_planned_paths: dict[str, list[tuple[int, int]]] = {}
+        self._settings = get_settings()
+
+    def _obs_enabled(self) -> bool:
+        return bool(self._settings.observability_enabled)
 
     def run(self) -> "EpisodeMetrics":
         from apex.evaluation.metrics import EpisodeMetrics
@@ -249,6 +303,11 @@ class EpisodeDriver:
                         paths=paths,
                         time=self.env.now,
                         actions=actions,
+                        provenance_events=(
+                            self.collector.iter_events()[-24:]
+                            if self._settings.viewer_provenance_enabled
+                            else None
+                        ),
                     ):
                         break
                     recorder.write_frame(viz.frame_rgb())
@@ -314,6 +373,7 @@ class EpisodeDriver:
             warehouse_state=wh,
             agent_registry=registry,
             settings=get_settings(),
+            event_sink=self.collector.record_event,
         )
         for a in registry.get_all_agents():
             self._positions[a.id] = a.position
@@ -441,13 +501,25 @@ class EpisodeDriver:
             agent_ids,
             self.translator,
             use_mcts_agent_ids=use_mcts,
+            plan_run_id=self.coordinator.last_plan_run_id,
+            graph_version_id=self.coordinator.last_graph_version_id,
+        )
+        self.collector.record_event(
+            "planning.graph_handoff",
+            {
+                "plan_run_id": self.coordinator.last_plan_run_id,
+                "graph_version_id": self.coordinator.last_graph_version_id,
+                "node_count": len(graph.nodes),
+                "instruction_count": len(instrs),
+                "assignment_source": "mcts" if use_mcts else "round_robin",
+            },
         )
         moves = _extract_move_sequence(instrs)
         gpaths = _greedy_paths_for_moves(moves, self._positions)
         self._last_planned_paths = gpaths
         conflicts = count_pairwise_spacetime_conflicts(gpaths)
         self.collector.record_event(
-            "planned_spacetime_conflict_total",
+            "execution.planned_spacetime_conflict_total",
             {"count": conflicts, "time": self.env.now},
         )
         self.executor.clear_all_queues()
@@ -461,7 +533,7 @@ class EpisodeDriver:
 
     def _handle_escalation(self, esc: EscalationSignal):
         self.collector.record_event(
-            "escalation",
+            "replan.escalation_detected",
             {"time": self.env.now, "reason": esc.reason},
         )
         if self._run_config.strategic_replan == StrategicReplanMode.DISABLED:
@@ -470,7 +542,7 @@ class EpisodeDriver:
             return
         baseline = self._current_graph or self.coordinator._last_task_graph  # noqa: SLF001
         delta = self.coordinator.replan(esc, current_graph=baseline)
-        self.collector.record_event("strategic_replan", {"time": self.env.now, "reason": esc.reason})
+        self.collector.record_event("replan.delta_proposed", {"time": self.env.now, "reason": esc.reason})
         nonempty = bool(delta.added or delta.removed or delta.modified)
         if baseline is not None and nonempty:
             try:
@@ -478,6 +550,10 @@ class EpisodeDriver:
                 if not err:
                     merged = apply_task_graph_delta(baseline, delta)
                     self._current_graph = merged
+                    self.collector.record_event(
+                        "replan.delta_applied",
+                        {"time": self.env.now, "added": len(delta.added), "removed": len(delta.removed), "modified": len(delta.modified)},
+                    )
                     orders = [
                         self.orders_by_id[n.order_id]
                         for n in merged.nodes
@@ -489,6 +565,7 @@ class EpisodeDriver:
                         return
             except ValueError:
                 pass
+        self.collector.record_event("replan.delta_rejected", {"time": self.env.now, "reason": "fallback_full_replan"})
         # HTN fallback full replan (MAP off or empty delta)
         inc = [
             o
@@ -515,6 +592,21 @@ class EpisodeDriver:
                 yield self.env.timeout(dt)
                 continue
 
+            if self._obs_enabled():
+                self.collector.record_event(
+                    "execution.instruction_started",
+                    {
+                        "instruction_id": instr.instruction_id,
+                        "task_node_id": instr.task_node_id,
+                        "plan_run_id": instr.plan_run_id,
+                        "graph_version_id": instr.graph_version_id,
+                        "agent_id": agent_id,
+                        "action_type": instr.action_type,
+                        "order_id": instr.order_id,
+                        "time": self.env.now,
+                    },
+                )
+
             if instr.action_type == "MOVE_TO" and instr.target_pos is not None:
                 yield from self._move_stepped(agent, instr.target_pos)
             elif instr.action_type in ("PICK", "PLACE_ON_CONVEYOR", "DISPATCH", "STAGE_HOLD"):
@@ -522,6 +614,11 @@ class EpisodeDriver:
                     instr.action_type
                 ]
                 agent.status = AgentStatus.WORKING
+                if self._obs_enabled():
+                    self.collector.record_event(
+                        "execution.agent_status_changed",
+                        {"agent_id": agent_id, "status": AgentStatus.WORKING.value, "time": self.env.now},
+                    )
                 self.collector.record_event(
                     "agent_busy_tick",
                     {"agent_id": agent_id, "duration": dt, "kind": "WORK"},
@@ -530,6 +627,11 @@ class EpisodeDriver:
                 if instr.action_type == "PICK":
                     agent.total_work_done += 1
                 agent.status = AgentStatus.IDLE
+                if self._obs_enabled():
+                    self.collector.record_event(
+                        "execution.agent_status_changed",
+                        {"agent_id": agent_id, "status": AgentStatus.IDLE.value, "time": self.env.now},
+                    )
                 if instr.action_type == "DISPATCH" and instr.order_id:
                     self._complete_order(instr.order_id)
             else:
@@ -537,8 +639,12 @@ class EpisodeDriver:
 
             self.executor.mark_completed(instr)
             self.collector.record_event(
-                "task_instruction_completed",
+                "execution.instruction_completed",
                 {
+                    "instruction_id": instr.instruction_id,
+                    "task_node_id": instr.task_node_id,
+                    "plan_run_id": instr.plan_run_id,
+                    "graph_version_id": instr.graph_version_id,
                     "agent_id": agent_id,
                     "action_type": instr.action_type,
                     "order_id": instr.order_id,
@@ -552,8 +658,8 @@ class EpisodeDriver:
             if o.id == order_id:
                 o.status = OrderStatus.COMPLETE
                 self.collector.record_event(
-                    "order_completed",
-                    {"order_id": order_id, "time": self.env.now},
+                "execution.order_completed",
+                {"order_id": order_id, "time": self.env.now},
                 )
                 return
 
@@ -569,15 +675,30 @@ class EpisodeDriver:
             else:
                 break
             agent.status = AgentStatus.MOVING
+            if self._obs_enabled():
+                self.collector.record_event(
+                    "execution.agent_status_changed",
+                    {"agent_id": agent.id, "status": AgentStatus.MOVING.value, "time": self.env.now},
+                )
             self.collector.record_event(
                 "agent_busy_tick",
                 {"agent_id": agent.id, "duration": step_time, "kind": "MOVE"},
             )
             yield self.env.timeout(step_time)
             agent.position = (r, c)
+            if self._obs_enabled() and self._settings.observability_emit_move_steps:
+                self.collector.record_event(
+                    "execution.move_step",
+                    {"agent_id": agent.id, "position": [r, c], "time": self.env.now},
+                )
             agent.total_distance_traveled += 1.0
             self._check_cooccupation()
         agent.status = AgentStatus.IDLE
+        if self._obs_enabled():
+            self.collector.record_event(
+                "execution.agent_status_changed",
+                {"agent_id": agent.id, "status": AgentStatus.IDLE.value, "time": self.env.now},
+            )
 
     def _check_cooccupation(self) -> None:
         pos_map: dict[tuple[int, int], list[str]] = defaultdict(list)

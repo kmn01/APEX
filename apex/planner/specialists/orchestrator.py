@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING
+from hashlib import sha256
+import time
+from typing import TYPE_CHECKING, Any, Callable
 
 _log = logging.getLogger(__name__)
 
@@ -188,10 +190,16 @@ class MapOrchestrator:
         *,
         settings: ApexSettings | None = None,
         gemini_client: JsonCompletionClient | None = None,
+        event_sink: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._injected_client = gemini_client
+        self._event_sink = event_sink
         self.last_trace: SpecialistTrace | None = None
+
+    def _emit(self, event_type: str, payload: dict[str, Any]) -> None:
+        if self._event_sink is not None:
+            self._event_sink(event_type, payload)
 
     def _resolve_client(self) -> JsonCompletionClient | None:
         if self._injected_client is not None:
@@ -245,6 +253,8 @@ class MapOrchestrator:
             },
             indent=2,
         )
+        base_hash = sha256(base_json.encode("utf-8")).hexdigest()
+        trace.debug["planning_context_hash"] = base_hash
 
         sys_dec = (
             "You are the Decomposition specialist in a warehouse MAP stack. "
@@ -270,20 +280,40 @@ class MapOrchestrator:
         )
 
         try:
+            step_started = time.perf_counter()
             dec = client.complete_json(sys_dec, base_json, DecompositionOutput)
             trace.decomposition = dec
+            self._emit(
+                "planning.llm_specialist_step",
+                {"step": "decomposition", "duration_s": time.perf_counter() - step_started, "context_hash": base_hash},
+            )
 
             pred_in = base_json + "\n\nDecomposition:\n" + dec.model_dump_json()
+            step_started = time.perf_counter()
             pred = client.complete_json(sys_pred, pred_in, StatePredictionOutput)
             trace.prediction = pred
+            self._emit(
+                "planning.llm_specialist_step",
+                {"step": "prediction", "duration_s": time.perf_counter() - step_started},
+            )
 
             mon_in = pred_in + "\n\nPrediction:\n" + pred.model_dump_json()
+            step_started = time.perf_counter()
             mon = client.complete_json(sys_mon, mon_in, MonitoringOutput)
             trace.monitoring = mon
+            self._emit(
+                "planning.llm_specialist_step",
+                {"step": "monitoring", "duration_s": time.perf_counter() - step_started},
+            )
 
             coord_in = mon_in + "\n\nMonitoring:\n" + mon.model_dump_json()
+            step_started = time.perf_counter()
             coord = client.complete_json(sys_coord, coord_in, CoordinationOutput)
             trace.coordination = coord
+            self._emit(
+                "planning.llm_specialist_step",
+                {"step": "coordination", "duration_s": time.perf_counter() - step_started},
+            )
 
             delta = coord.delta
             derr = validate_task_graph_delta(baseline_graph, delta)
@@ -339,6 +369,8 @@ class MapOrchestrator:
             },
             indent=2,
         )
+        base_hash = sha256(base_json.encode("utf-8")).hexdigest()
+        trace.debug["replan_context_hash"] = base_hash
 
         sys_dec = (
             "You are the Decomposition specialist for replanning after a disruption. "
@@ -358,20 +390,40 @@ class MapOrchestrator:
         )
 
         try:
+            step_started = time.perf_counter()
             dec = client.complete_json(sys_dec, base_json, DecompositionOutput)
             trace.decomposition = dec
+            self._emit(
+                "replan.llm_specialist_step",
+                {"step": "decomposition", "duration_s": time.perf_counter() - step_started, "context_hash": base_hash},
+            )
 
             pred_in = base_json + "\n\nDecomposition:\n" + dec.model_dump_json()
+            step_started = time.perf_counter()
             pred = client.complete_json(sys_pred, pred_in, StatePredictionOutput)
             trace.prediction = pred
+            self._emit(
+                "replan.llm_specialist_step",
+                {"step": "prediction", "duration_s": time.perf_counter() - step_started},
+            )
 
             mon_in = pred_in + "\n\nPrediction:\n" + pred.model_dump_json()
+            step_started = time.perf_counter()
             mon = client.complete_json(sys_mon, mon_in, MonitoringOutput)
             trace.monitoring = mon
+            self._emit(
+                "replan.llm_specialist_step",
+                {"step": "monitoring", "duration_s": time.perf_counter() - step_started},
+            )
 
             coord_in = mon_in + "\n\nMonitoring:\n" + mon.model_dump_json()
+            step_started = time.perf_counter()
             coord = client.complete_json(sys_coord, coord_in, CoordinationOutput)
             trace.coordination = coord
+            self._emit(
+                "replan.llm_specialist_step",
+                {"step": "coordination", "duration_s": time.perf_counter() - step_started},
+            )
 
             delta = coord.delta
             derr = validate_task_graph_delta(current_graph, delta)

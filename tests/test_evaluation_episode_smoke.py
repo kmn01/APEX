@@ -78,3 +78,29 @@ run:
     spec = load_scenario_from_yaml(p)
     m = EpisodeDriver(spec).run()
     assert m.scheduled_instruction_count >= 8
+
+
+def test_instruction_lineage_events_are_emitted():
+    spec = build_scenario("single_order_single_agent")
+    driver = EpisodeDriver(spec)
+    driver.run()
+    collector = driver.collector
+    events = collector.iter_events()
+
+    scheduled = [p for et, p in events if et == "execution.instruction_scheduled"]
+    started = [p for et, p in events if et == "execution.instruction_started"]
+    completed = [p for et, p in events if et == "execution.instruction_completed"]
+
+    assert scheduled
+    assert started
+    assert completed
+
+    scheduled_ids = {p.get("instruction_id") for p in scheduled}
+    started_ids = {p.get("instruction_id") for p in started}
+    completed_ids = {p.get("instruction_id") for p in completed}
+
+    assert None not in scheduled_ids
+    assert None not in started_ids
+    assert None not in completed_ids
+    assert completed_ids.issubset(scheduled_ids)
+    assert started_ids.issubset(scheduled_ids)

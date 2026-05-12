@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from typing import TypeVar
+from typing import Any, Callable, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -59,11 +59,18 @@ class GeminiJsonClient:
             max_retries=s.map_max_retries,
         )
 
-    def complete_json(self, system: str, user: str, model_cls: type[T]) -> T:
+    def complete_json(
+        self,
+        system: str,
+        user: str,
+        model_cls: type[T],
+        telemetry_hook: Callable[[dict[str, Any]], None] | None = None,
+    ) -> T:
         from google.genai import types  # type: ignore[import-not-found]
 
         last_err: Exception | None = None
         for attempt in range(self._max_retries + 1):
+            started = time.perf_counter()
             try:
                 response = self._client.models.generate_content(
                     model=self._model,
@@ -76,15 +83,46 @@ class GeminiJsonClient:
                 )
                 text = getattr(response, "text", None) or ""
                 payload = json.loads(_strip_json_fence(text))
-                return model_cls.model_validate(payload)
+                out = model_cls.model_validate(payload)
+                if telemetry_hook is not None:
+                    telemetry_hook(
+                        {
+                            "model": self._model,
+                            "attempt": attempt,
+                            "duration_s": time.perf_counter() - started,
+                            "ok": True,
+                            "response_chars": len(text),
+                        }
+                    )
+                return out
             except (json.JSONDecodeError, ValidationError, AttributeError, ValueError) as exc:
                 last_err = exc
+                if telemetry_hook is not None:
+                    telemetry_hook(
+                        {
+                            "model": self._model,
+                            "attempt": attempt,
+                            "duration_s": time.perf_counter() - started,
+                            "ok": False,
+                            "error_type": type(exc).__name__,
+                        }
+                    )
                 if attempt < self._max_retries:
                     time.sleep(0.4 * (attempt + 1))
                     continue
                 raise RuntimeError(f"Gemini JSON parse/validate failed: {exc}") from exc
             except Exception as exc:  # noqa: BLE001
                 last_err = exc
+                if telemetry_hook is not None:
+                    telemetry_hook(
+                        {
+                            "model": self._model,
+                            "attempt": attempt,
+                            "duration_s": time.perf_counter() - started,
+                            "ok": False,
+                            "error_type": type(exc).__name__,
+                        }
+                    )
                 if attempt < self._max_retries:
                     time.sleep(0.4 * (attempt + 1))
                     continue

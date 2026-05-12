@@ -86,6 +86,23 @@ class ApexSettings(BaseSettings):
         validation_alias=AliasChoices("APEX_MAP_MAX_RETRIES", "map_max_retries"),
     )
 
+    observability_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("APEX_OBSERVABILITY_ENABLED", "observability_enabled"),
+    )
+    observability_emit_move_steps: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "APEX_OBSERVABILITY_EMIT_MOVE_STEPS", "observability_emit_move_steps"
+        ),
+    )
+    viewer_provenance_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "APEX_VIEWER_PROVENANCE_ENABLED", "viewer_provenance_enabled"
+        ),
+    )
+
 
 MapRolloutStage = Literal["disabled", "shadow_replan", "apply_replan", "full"]
 

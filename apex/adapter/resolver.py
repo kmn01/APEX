@@ -16,7 +16,7 @@ class TaskResolver:
     """Lookup service from SKUs and order ids to physical infrastructure."""
 
     def __init__(self) -> None:
-        pass
+        self.last_resolution_trace: dict[str, Any] = {}
 
     def __repr__(self) -> str:
         return "TaskResolver()"
@@ -30,6 +30,7 @@ class TaskResolver:
         Otherwise falls back to the first listed shelf (MVP policy).
         """
         if not warehouse_state.shelf_zones:
+            self.last_resolution_trace = {"kind": "shelf", "sku": sku, "reason": "no_shelves"}
             return None
         for order in (
             *warehouse_state.pending_orders,
@@ -38,19 +39,40 @@ class TaskResolver:
             for item in order.items:
                 if item.sku == sku:
                     try:
-                        return warehouse_state.get_shelf(item.shelf_zone_id)
+                        shelf = warehouse_state.get_shelf(item.shelf_zone_id)
+                        self.last_resolution_trace = {
+                            "kind": "shelf",
+                            "sku": sku,
+                            "selected_id": shelf.id,
+                            "reason": "order_item_match",
+                        }
+                        return shelf
                     except KeyError:
                         continue
-        return warehouse_state.shelf_zones[0]
+        shelf = warehouse_state.shelf_zones[0]
+        self.last_resolution_trace = {
+            "kind": "shelf",
+            "sku": sku,
+            "selected_id": shelf.id,
+            "reason": "fallback_first_shelf",
+        }
+        return shelf
 
     def resolve_bay(self, order_id: str, warehouse_state: Any) -> LoadingBay | None:
         """Select a :class:`LoadingBay` for ``order_id`` using deterministic heuristics."""
         if not warehouse_state.bays:
+            self.last_resolution_trace = {"kind": "bay", "order_id": order_id, "reason": "no_bays"}
             return None
 
         # Respect existing explicit assignment if the order is already queued at a bay.
         for bay in warehouse_state.bays:
             if order_id and order_id in bay.queue:
+                self.last_resolution_trace = {
+                    "kind": "bay",
+                    "order_id": order_id,
+                    "selected_id": bay.id,
+                    "reason": "existing_queue_assignment",
+                }
                 return bay
 
         order = warehouse_state.get_order(order_id) if order_id else None
@@ -64,7 +86,7 @@ class TaskResolver:
                 shelf_positions.extend(shelf.positions)
 
             if shelf_positions:
-                return min(
+                bay = min(
                     warehouse_state.bays,
                     key=lambda bay: (
                         len(bay.queue),
@@ -72,9 +94,25 @@ class TaskResolver:
                         bay.id,
                     ),
                 )
+                self.last_resolution_trace = {
+                    "kind": "bay",
+                    "order_id": order_id,
+                    "selected_id": bay.id,
+                    "reason": "nearest_to_shelves_with_queue_bias",
+                    "candidate_count": len(warehouse_state.bays),
+                }
+                return bay
 
         # Fallback: shortest queue, then stable bay id.
-        return min(warehouse_state.bays, key=lambda bay: (len(bay.queue), bay.id))
+        bay = min(warehouse_state.bays, key=lambda bay: (len(bay.queue), bay.id))
+        self.last_resolution_trace = {
+            "kind": "bay",
+            "order_id": order_id,
+            "selected_id": bay.id,
+            "reason": "fallback_shortest_queue",
+            "candidate_count": len(warehouse_state.bays),
+        }
+        return bay
 
     def resolve_conveyor_segment(
         self,
@@ -84,6 +122,11 @@ class TaskResolver:
     ) -> ConveyorSegment | None:
         """Return the conveyor segment whose cells are closest to the origin."""
         if not warehouse_state.conveyors:
+            self.last_resolution_trace = {
+                "kind": "conveyor",
+                "origin": [origin_row, origin_col],
+                "reason": "no_conveyors",
+            }
             return None
         origin = (origin_row, origin_col)
 
@@ -92,7 +135,15 @@ class TaskResolver:
                 return 10**9
             return min(manhattan_distance(origin, p) for p in seg.positions)
 
-        return min(warehouse_state.conveyors, key=min_dist)
+        segment = min(warehouse_state.conveyors, key=min_dist)
+        self.last_resolution_trace = {
+            "kind": "conveyor",
+            "origin": [origin_row, origin_col],
+            "selected_id": segment.id,
+            "reason": "nearest_segment",
+            "candidate_count": len(warehouse_state.conveyors),
+        }
+        return segment
 
     def resolve_conveyor_path(
         self,

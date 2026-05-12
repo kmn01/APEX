@@ -28,6 +28,11 @@ class TaskInstruction(BaseModel):
     conveyor_id: str | None = None
     bay_id: str | None = None
     deadline: float = 0.0
+    instruction_id: str | None = None
+    task_node_id: str | None = None
+    plan_run_id: str | None = None
+    graph_version_id: str | None = None
+    resolver_trace: dict[str, Any] | None = None
 
 
 class TacticalExecutor:
@@ -150,6 +155,14 @@ class TacticalExecutor:
     def get_completed_count(self) -> int:
         """Total instructions completed."""
         return len(self._completed_instructions)
+
+    def get_queue_snapshot(self) -> dict[str, list[TaskInstruction]]:
+        """Read-only snapshot of queued instructions by agent."""
+        return {aid: list(queue) for aid, queue in self._agent_queues.items()}
+
+    def get_action_snapshot(self) -> dict[str, str]:
+        """Alias for external observability consumers."""
+        return self.get_agent_actions()
 
     def clear_all_queues(self) -> None:
         """Remove all queued (not-yet-delivered) instructions; keeps completion history."""

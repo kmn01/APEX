@@ -66,6 +66,7 @@ class MCTSSearch:
 
         self._best_reward: float = float("-inf")
         self._best_state: AssignmentState | None = None
+        self.last_summary: dict[str, float | int] = {}
 
     def __repr__(self) -> str:
         return (
@@ -77,15 +78,29 @@ class MCTSSearch:
         """Run MCTS from ``root_state`` and return the best-found assignment."""
         self._best_reward = float("-inf")
         self._best_state = None
+        rollout_dead_ends = 0
+        rollout_count = 0
 
         root = MCTSNode(state=root_state.model_copy(deep=True), parent=None)
 
         # Nothing to decide — HTN or a prior pass already fixed every agent slot.
         if self._domain.is_terminal(root.state):
+            self.last_summary = {
+                "iterations": 0,
+                "terminal_at_root": 1,
+                "rollout_count": 0,
+                "rollout_dead_ends": 0,
+            }
             return root.state.model_copy(deep=True)
 
         # Degenerate: tasks lack any feasible agent under ``can_assign``.
         if not self._domain.legal_moves(root.state):
+            self.last_summary = {
+                "iterations": 0,
+                "terminal_at_root": 0,
+                "rollout_count": 0,
+                "rollout_dead_ends": 1,
+            }
             return root.state.model_copy(deep=True)
 
         for _ in range(self.n_iterations):
@@ -99,9 +114,18 @@ class MCTSSearch:
 
             child = self._expand(path_leaf)
             reward, end_state = self._rollout(child)
+            rollout_count += 1
+            if reward == float("-inf"):
+                rollout_dead_ends += 1
             self._maybe_track_best(end_state, reward)
             self._backpropagate(child, reward)
 
+        self.last_summary = {
+            "iterations": self.n_iterations,
+            "rollout_count": rollout_count,
+            "rollout_dead_ends": rollout_dead_ends,
+            "best_reward": self._best_reward if self._best_state is not None else float("-inf"),
+        }
         if self._best_state is not None:
             return self._best_state.model_copy(deep=True)
 

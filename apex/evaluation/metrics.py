@@ -22,6 +22,7 @@ All ``data`` dicts are optional unless noted.
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -62,7 +63,11 @@ class MetricsCollector:
 
     def record_event(self, event_type: str, data: dict[str, Any] | None = None) -> None:
         """Store a structured event for later metric computation."""
-        self._events.append((event_type, data if data is not None else {}))
+        payload = dict(data) if data is not None else {}
+        payload.setdefault("event_id", f"evt_{uuid4().hex}")
+        payload.setdefault("schema_version", "1.0")
+        payload.setdefault("payload_version", 1)
+        self._events.append((event_type, payload))
 
     def compute_episode_metrics(self) -> EpisodeMetrics:
         """Fold :attr:`_events` into :class:`EpisodeMetrics`."""
@@ -101,19 +106,19 @@ class MetricsCollector:
                 completions[oid] = t
                 completed_order_ids.add(oid)
 
-            elif etype == "task_instruction_scheduled":
+            elif etype in ("task_instruction_scheduled", "execution.instruction_scheduled"):
                 scheduled_i += 1
 
-            elif etype == "task_instruction_completed":
+            elif etype in ("task_instruction_completed", "execution.instruction_completed"):
                 completed_i += 1
 
             elif etype == "disruption":
                 disruptions += 1
 
-            elif etype == "strategic_replan":
+            elif etype in ("strategic_replan", "replan.delta_proposed"):
                 replans += 1
 
-            elif etype == "escalation":
+            elif etype in ("escalation", "replan.escalation_detected"):
                 escalations += 1
 
             elif etype == "collision":
@@ -122,7 +127,7 @@ class MetricsCollector:
             elif etype == "executed_conflict":
                 exec_conflicts += 1
 
-            elif etype == "planned_spacetime_conflict_total":
+            elif etype in ("planned_spacetime_conflict_total", "execution.planned_spacetime_conflict_total"):
                 planned_conflicts += int(payload.get("count") or 0)
 
             elif etype == "agent_idle_tick":

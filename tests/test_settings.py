@@ -5,14 +5,16 @@ import pytest
 from apex.config.settings import ApexSettings, get_settings, map_rollout_stage, require_gemini_api_key
 
 
-def test_require_gemini_api_key_raises_when_missing():
-    s = ApexSettings(gemini_api_key=None)
+def test_require_gemini_api_key_raises_when_missing(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    s = ApexSettings(gemini_api_key=None, _env_file=None)
     with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
         require_gemini_api_key(s)
 
 
-def test_require_gemini_api_key_ok():
-    s = ApexSettings(gemini_api_key="secret")
+def test_require_gemini_api_key_ok(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    s = ApexSettings(gemini_api_key="secret", _env_file=None)
     assert require_gemini_api_key(s) == "secret"
 
 

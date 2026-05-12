@@ -52,9 +52,14 @@ class TaskGraph(BaseModel):
 class HTNPlanner:
     """Decomposes goals using configured HTN methods and operators."""
 
-    def __init__(self, max_depth: int = 32) -> None:
+    def __init__(
+        self,
+        max_depth: int = 32,
+        event_sink: Callable[[str, dict[str, Any]], None] | None = None,
+    ) -> None:
         self.max_depth = max_depth
         self._depth_counter = 0
+        self._event_sink = event_sink
         self._applicability_checks: dict[str, Callable[[Order, Any], bool]] = {
             "always_true": self._always_true,
             "order_items_available": self._order_items_available,
@@ -112,8 +117,25 @@ class HTNPlanner:
             if self._is_method_applicable(method.applicability_check_fn, order, warehouse_state)
         ]
         if not applicable_methods:
+            if self._event_sink is not None:
+                self._event_sink(
+                    "planning.htn_method_unavailable",
+                    {"goal_task": goal_task, "order_id": order.id},
+                )
             return None
-        return max(applicable_methods, key=lambda m: (m.priority, m.name))
+        selected = max(applicable_methods, key=lambda m: (m.priority, m.name))
+        if self._event_sink is not None:
+            self._event_sink(
+                "planning.htn_method_selected",
+                {
+                    "goal_task": goal_task,
+                    "order_id": order.id,
+                    "method": selected.name,
+                    "priority": selected.priority,
+                    "candidate_count": len(applicable_methods),
+                },
+            )
+        return selected
 
     def decompose(
         self,
@@ -164,6 +186,11 @@ class HTNPlanner:
         Decomposes each order into a chain of tasks, then wires dependencies.
         """
         graph = TaskGraph()
+        if self._event_sink is not None:
+            self._event_sink(
+                "planning.htn_batch_started",
+                {"order_count": len(order_batch.orders)},
+            )
 
         for order in order_batch.orders:
             # Decompose order into tasks
@@ -177,6 +204,17 @@ class HTNPlanner:
             for i in range(len(task_nodes) - 1):
                 graph.add_edge(task_nodes[i].id, task_nodes[i + 1].id)
 
+            if self._event_sink is not None:
+                self._event_sink(
+                    "planning.htn_decompose",
+                    {"order_id": order.id, "task_count": len(task_nodes)},
+                )
+
+        if self._event_sink is not None:
+            self._event_sink(
+                "planning.htn_batch_completed",
+                {"node_count": len(graph.nodes), "edge_count": len(graph.edges)},
+            )
         return graph
 
 

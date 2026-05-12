@@ -18,6 +18,7 @@ from apex.scenarios.models import ScenarioSpec
 
 _EVENT_RING_MAX = 8
 _IMMEDIATE_SEGMENT_CELLS = 7
+_PROVENANCE_RING_MAX = 10
 
 
 class WarehouseVisualizer:
@@ -48,6 +49,7 @@ class WarehouseVisualizer:
         self.show_zones = True
         self.show_telemetry = True
         self.recent_events: deque[str] = deque(maxlen=_EVENT_RING_MAX)
+        self.provenance_events: deque[str] = deque(maxlen=_PROVENANCE_RING_MAX)
         self._last_actions: dict[str, str] = {}
         self._scenario = scenario
         self._scenario_hint = dict(scenario_hint) if scenario_hint else None
@@ -497,6 +499,31 @@ class WarehouseVisualizer:
                 self._push_event(f"{aid}: {new}")
         self._last_actions = dict(actions)
 
+    def _ingest_provenance_events(
+        self,
+        events: list[tuple[str, dict[str, Any]]] | None,
+    ) -> None:
+        if not events:
+            return
+        for event_type, payload in events[-6:]:
+            if not (
+                event_type.startswith("planning.")
+                or event_type.startswith("replan.")
+                or event_type.startswith("mapping.")
+                or event_type.startswith("execution.")
+            ):
+                continue
+            agent = payload.get("agent_id")
+            instruction_id = payload.get("instruction_id")
+            suffix = []
+            if agent:
+                suffix.append(f"agent={agent}")
+            if instruction_id:
+                suffix.append(f"instr={str(instruction_id)[:8]}")
+            line = event_type if not suffix else f"{event_type} ({', '.join(suffix)})"
+            if not self.provenance_events or self.provenance_events[-1] != line:
+                self.provenance_events.append(line)
+
     def draw_info_panel(
         self,
         agents: list[Any],
@@ -504,7 +531,9 @@ class WarehouseVisualizer:
         actions: dict[str, str],
         fps: float,
         paths: dict[str, list[tuple[int, int]]] | None,
+        provenance_events: list[tuple[str, dict[str, Any]]] | None = None,
     ) -> None:
+        self._ingest_provenance_events(provenance_events)
         panel_x = self.width - self.panel_width - 10
         panel_y = 10
         panel_h = min(self.height - 20, 580)
@@ -659,6 +688,14 @@ class WarehouseVisualizer:
                 y += 14
             y += 6
 
+        if self.provenance_events:
+            self.screen.blit(self.font_small.render("Provenance", True, self.colors["text_dark"]), (x0, y))
+            y += 18
+            for ev in list(self.provenance_events)[-4:]:
+                self.screen.blit(self.font_tiny.render(ev[:44], True, (180, 205, 240)), (x0, y))
+                y += 14
+            y += 6
+
         if self.show_telemetry:
             room = panel_rect.bottom - y - 70
             if room > 40:
@@ -706,6 +743,7 @@ class WarehouseVisualizer:
         paths: dict[str, list[tuple[int, int]]] | None = None,
         time: float = 0.0,
         actions: dict[str, str] | None = None,
+        provenance_events: list[tuple[str, dict[str, Any]]] | None = None,
     ) -> bool:
         """Render one frame. Return False if should exit."""
         actions = actions or {}
@@ -759,7 +797,7 @@ class WarehouseVisualizer:
         if self.paused:
             self.draw_pause_overlay()
 
-        self.draw_info_panel(agents or [], time, actions, fps, paths)
+        self.draw_info_panel(agents or [], time, actions, fps, paths, provenance_events)
 
         pygame.display.flip()
         self.clock.tick(60 if not self.paused else 15)

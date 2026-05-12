@@ -24,6 +24,9 @@ class AbstractTask(BaseModel):
     zone_hint: str | None = None
     priority: int = 0
     deadline: float = 0.0
+    task_node_id: str | None = None
+    plan_run_id: str | None = None
+    graph_version_id: str | None = None
 
 
 class ConcreteInstruction(BaseModel):
@@ -60,6 +63,7 @@ class DomainTranslator:
         if task.task_type == "PICK":
             # Resolve SKU to shelf
             shelf = self.resolver.resolve_shelf(task.item_sku or "", warehouse_state)
+            resolver_trace = dict(self.resolver.last_resolution_trace)
             
             # Generate movement + pick sequence
             if shelf and shelf.positions:
@@ -71,6 +75,10 @@ class DomainTranslator:
                         target_pos=target_pos,
                         shelf_id=shelf.id,
                         order_id=task.order_id,
+                        task_node_id=task.task_node_id,
+                        plan_run_id=task.plan_run_id,
+                        graph_version_id=task.graph_version_id,
+                        resolver_trace=resolver_trace,
                     )
                 )
                 instructions.append(
@@ -80,6 +88,10 @@ class DomainTranslator:
                         shelf_id=shelf.id,
                         deadline=task.deadline,
                         order_id=task.order_id,
+                        task_node_id=task.task_node_id,
+                        plan_run_id=task.plan_run_id,
+                        graph_version_id=task.graph_version_id,
+                        resolver_trace=resolver_trace,
                     )
                 )
         
@@ -90,6 +102,7 @@ class DomainTranslator:
                 warehouse_state.grid.cols // 2,
                 warehouse_state,
             )
+            resolver_trace = dict(self.resolver.last_resolution_trace)
             
             if conveyor and conveyor.positions:
                 target_pos = conveyor.positions[0]
@@ -100,6 +113,10 @@ class DomainTranslator:
                         target_pos=target_pos,
                         conveyor_id=conveyor.id,
                         order_id=task.order_id,
+                        task_node_id=task.task_node_id,
+                        plan_run_id=task.plan_run_id,
+                        graph_version_id=task.graph_version_id,
+                        resolver_trace=resolver_trace,
                     )
                 )
                 instructions.append(
@@ -108,6 +125,10 @@ class DomainTranslator:
                         action_type="PLACE_ON_CONVEYOR",
                         conveyor_id=conveyor.id,
                         order_id=task.order_id,
+                        task_node_id=task.task_node_id,
+                        plan_run_id=task.plan_run_id,
+                        graph_version_id=task.graph_version_id,
+                        resolver_trace=resolver_trace,
                     )
                 )
         
@@ -118,6 +139,7 @@ class DomainTranslator:
                 warehouse_state.grid.cols // 2,
                 warehouse_state,
             )
+            resolver_trace = dict(self.resolver.last_resolution_trace)
             if conveyor and conveyor.positions:
                 staging_pos = conveyor.positions[
                     len(conveyor.positions) // 2 if len(conveyor.positions) > 1 else 0
@@ -129,6 +151,10 @@ class DomainTranslator:
                         target_pos=staging_pos,
                         conveyor_id=conveyor.id,
                         order_id=task.order_id,
+                        task_node_id=task.task_node_id,
+                        plan_run_id=task.plan_run_id,
+                        graph_version_id=task.graph_version_id,
+                        resolver_trace=resolver_trace,
                     )
                 )
                 instructions.append(
@@ -138,12 +164,17 @@ class DomainTranslator:
                         conveyor_id=conveyor.id,
                         deadline=task.deadline,
                         order_id=task.order_id,
+                        task_node_id=task.task_node_id,
+                        plan_run_id=task.plan_run_id,
+                        graph_version_id=task.graph_version_id,
+                        resolver_trace=resolver_trace,
                     )
                 )
 
         elif task.task_type == "DISPATCH":
             # Move to bay, hand off
             bay = self.resolver.resolve_bay(task.order_id or "order-1", warehouse_state)
+            resolver_trace = dict(self.resolver.last_resolution_trace)
             
             if bay:
                 instructions.append(
@@ -153,6 +184,10 @@ class DomainTranslator:
                         target_pos=bay.position,
                         bay_id=bay.id,
                         order_id=task.order_id,
+                        task_node_id=task.task_node_id,
+                        plan_run_id=task.plan_run_id,
+                        graph_version_id=task.graph_version_id,
+                        resolver_trace=resolver_trace,
                     )
                 )
                 instructions.append(
@@ -162,6 +197,10 @@ class DomainTranslator:
                         bay_id=bay.id,
                         deadline=task.deadline,
                         order_id=task.order_id,
+                        task_node_id=task.task_node_id,
+                        plan_run_id=task.plan_run_id,
+                        graph_version_id=task.graph_version_id,
+                        resolver_trace=resolver_trace,
                     )
                 )
         
@@ -173,6 +212,9 @@ class DomainTranslator:
                     action_type=task.task_type,
                     deadline=task.deadline,
                     order_id=task.order_id,
+                    task_node_id=task.task_node_id,
+                    plan_run_id=task.plan_run_id,
+                    graph_version_id=task.graph_version_id,
                 )
             )
         

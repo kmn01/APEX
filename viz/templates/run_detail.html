@@ -8,24 +8,6 @@
 <p class="muted">Suite-style scenarios are documented in <code>docs/Scenario_Test_Suite.md</code> in the repo clone.</p>
 {% endif %}
 
-<div class="panel">
-  <h2>How it was run</h2>
-  <dl class="metrics">
-    <dt>Scenario id</dt><dd>{{ snippet.scenario_id or "—" }}</dd>
-    <dt>Seed</dt><dd>{{ snippet.seed if snippet.seed is not none else "—" }}</dd>
-    <dt>Horizon (cap)</dt><dd>{% if snippet.horizon is not none %}{{ snippet.horizon }}s{% else %}—{% endif %}</dd>
-    <dt>Coordination</dt><dd>{{ snippet.coordination or "—" }}</dd>
-    <dt>Planning mode</dt><dd>{{ snippet.planning_mode or "—" }}</dd>
-    <dt>Strategic replan</dt><dd>{{ snippet.strategic_replan or "—" }}</dd>
-  </dl>
-  {% if cli is not none %}
-  <details class="details-block">
-    <summary>CLI arguments (JSON)</summary>
-    <pre class="cli">{{ cli_json }}</pre>
-  </details>
-  {% endif %}
-</div>
-
 {% if scenario_digest %}
 <div class="panel">
   <h2>What was simulated</h2>
