@@ -22,6 +22,48 @@
 - **`WarehouseState`** is the single shared snapshot passed into planners and processes.
 - **Data** uses **Pydantic v2** `BaseModel`; **algorithms** use `ABC` or `dataclass` as appropriate.
 
+## Repository layout
+
+High-level tree (omit generated paths such as `.venv/`, `__pycache__/`, `runs/`, `*.egg-info/`):
+
+```text
+APEX/
+├── README.md
+├── pyproject.toml
+├── .env.example
+├── apex/                      # main Python package
+│   ├── agents/                # SimPy agents (picker, carrier, sorter, registry)
+│   ├── adapter/               # TaskResolver, DomainTranslator
+│   ├── comms/                 # SharedBlackboard
+│   ├── common/                # shared utilities (e.g. geometry)
+│   ├── config/                # pydantic-settings (Gemini, MAP, observability)
+│   ├── evaluation/            # EpisodeDriver, metrics, run I/O, digests
+│   ├── planner/               # HTN, MCTS, coordinator, graph_delta, specialists
+│   │   ├── htn/
+│   │   ├── mcts/
+│   │   └── specialists/       # MAP / Gemini orchestration + client
+│   ├── scenarios/             # ScenarioSpec, catalog, builder, YAML under data/
+│   │   └── data/
+│   │       ├── single_order.yaml
+│   │       └── suite/         # benchmark YAML scenarios
+│   ├── simulation/            # grid, warehouse, orders, events
+│   ├── tactical/              # executor, CBS, pathfinder, replanner
+│   └── visualization/         # pygame viewer + MP4 recorder
+├── config/                    # sample warehouse / experiment YAML (see note in Reproducing)
+├── docs/                      # design guides, scenario suite, MAP rollout
+├── examples/
+│   └── end_to_end_demo.py
+├── experiments/               # experiment presets (YAML)
+├── scripts/
+│   ├── run_scenario.py        # evaluation CLI → run artifacts
+│   ├── export_catalog_scenario_to_yaml.py
+│   └── plot_benchmarks.py
+├── tests/
+└── viz/                       # FastAPI dashboard + Jinja templates
+    ├── dashboard.py
+    └── templates/
+```
+
 ## Requirements
 
 - **Python 3.11+** (see `pyproject.toml`).
